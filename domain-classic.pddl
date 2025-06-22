@@ -7,7 +7,7 @@
     :equality
     :disjunctive-preconditions
     :conditional-effects
-    :action-costs
+    :action-costs 
   )
 
   ;; Objects types
@@ -104,7 +104,7 @@
           (forall (?o - ball)
             ;; 6c. There must not be a ball in ?to (target cell)
             (not (ball_at ?o ?to))
-          )
+          ) 
         )
 
         ;; 7. This condition is useful to check if I can move a ball on a ball stack. In particular, the ball ?b must be smaller
