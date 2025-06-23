@@ -6,7 +6,7 @@ from matplotlib.widgets import Button
 
 # File paths (adjust as needed)
 PROBLEM_FILE = 'problem-numeric.pddl'
-PLAN_FILE = 'plan.txt'
+PLAN_FILE = 'plan_numeric.txt'
 
 SMALL_RADIUS  = 0.15
 MEDIUM_RADIUS = 0.25

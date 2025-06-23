@@ -1,5 +1,5 @@
 (define (problem adam)
-  (:domain snowman_basic_adl)
+  (:domain snowman_numeric)
 
   ;; --------------------------------------------------------------------
   ;; OGGETTI

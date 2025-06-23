@@ -1,6 +1,6 @@
-(define (domain snowman_basic_adl)
+(define (domain snowman_numeric)
 
-  ;; Domain requirements
+  ;; Domain requirements   
   (:requirements
     :typing
     :negative-preconditions
