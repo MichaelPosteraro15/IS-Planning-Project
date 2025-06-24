@@ -3,209 +3,196 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button
+import time
 
-# File paths (adjust as needed)
+# File paths
 PROBLEM_FILE = 'problem-numeric.pddl'
 PLAN_FILE = 'plan_numeric.txt'
 
-SMALL_RADIUS  = 0.15
-MEDIUM_RADIUS = 0.25
-LARGE_RADIUS  = 0.35
-SHOW_DESCRIPTION = True  # Toggle to show action description text
+# Radii for ball sizes
+RADIUS = {0: 0.15, 1: 0.25, 2: 0.35}
+SHOW_DESCRIPTION = True
+SUBSTEPS = 10  # frames per cell movement
+PLT_PAUSE = 0.3  # pause duration after each step
 
+# Parsing helpers
 def parse_loc(loc):
-    _, r, c = loc.split('_')
-    return (int(r) - 1, int(c) - 1)
+    parts = loc.split('_')
+    if len(parts) < 3:
+        raise ValueError(f"Invalid location format: {loc}")
+    _, r, c = parts
+    return int(r)-1, int(c)-1
 
 def coord_to_plot(coord, grid_size):
     r, c = coord
-    # flip y-axis for plotting
-    return c, grid_size - 1 - r
+    return c, grid_size-1-r
 
-# Parsing functions
-def parse_problem(file_path):
+# Parse PDDL problem
+def parse_problem(path):
     snow, balls, ball_size = {}, {}, {}
     character = None
     grid_positions = set()
-    with open(file_path) as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith('(= (location_type'):
-                m = re.match(r'\(= \(location_type (\S+)\) (\d+)\)', line)
-                if m:
-                    loc, typ = m.groups()
-                    coord = parse_loc(loc)
-                    snow[coord] = (typ == '1')
-                    grid_positions.add(coord)
-            if line.startswith('(ball_at'):
-                m = re.match(r'\(ball_at (\S+) (\S+)\)', line)
-                if m:
-                    b, l = m.groups()
-                    coord = parse_loc(l)
-                    balls[b] = coord
-                    grid_positions.add(coord)
-            for b, size in re.findall(r'\(= \(ball_size (\S+)\) (\d+)\)', line):
-                ball_size[b] = int(size)
-            if line.startswith('(character_at'):
-                m = re.match(r'\(character_at (\S+)\)', line)
-                if m:
-                    coord = parse_loc(m.group(1))
-                    character = coord
-                    grid_positions.add(coord)
+    for line in open(path):
+        line = line.strip()
+        if line.startswith('(= (location_type'):
+            m = re.match(r"\(= \(location_type (\S+)\) (\d+)\)", line)
+            if m:
+                loc, t = m.groups()
+                coord = parse_loc(loc)
+                snow[coord] = (t == '1')
+                grid_positions.add(coord)
+        if line.startswith('(ball_at'):
+            match = re.findall(r"\(ball_at (\S+) (\S+)\)", line)
+            if match:
+                b, loc = match[0]
+                balls[b] = parse_loc(loc)
+                grid_positions.add(balls[b])
+        for b, s in re.findall(r"\(= \(ball_size (\S+)\) (\d+)\)", line):
+            ball_size[b] = int(s)
+        if line.startswith('(character_at'):
+            locs = re.findall(r"\(character_at (\S+)\)", line)
+            if locs:
+                loc = locs[0]
+                character = parse_loc(loc)
+                grid_positions.add(character)
     for b in balls:
         ball_size.setdefault(b, 0)
-    size = max(max(r for r, _ in grid_positions),
-               max(c for _, c in grid_positions)) + 1
-    return {'snow': snow, 'balls': balls, 'ball_size': ball_size,
-            'character': character, 'grid_size': size}
+    size = max(max(r for r, _ in grid_positions), max(c for _, c in grid_positions)) + 1
+    return {'snow': snow, 'balls': balls, 'ball_size': ball_size, 'character': character, 'grid_size': size}
 
-def parse_plan(file_path):
+# Parse plan
+def parse_plan(path):
     steps = []
-    pattern = re.compile(r'^\s*\d+(?:\.\d+)?:\s*\((.+)\)')
-    with open(file_path) as f:
-        for line in f:
-            m = pattern.match(line)
-            if m:
-                steps.append(m.group(1).strip())
+    for line in open(path):
+        if ':' in line and '(' in line:
+            act = line.split(':', 1)[1].strip()[1:-1]
+            if act:
+                steps.append(act)
     return steps
 
-# Build enhanced frame list with substeps
-def build_frames(problem, plan):
+# Build frames with interpolation
+def build_frames(prob, plan):
     frames = []
-    state = problem
-    grid_size = problem['grid_size']
-    frames.append((state, None))
-    for action in plan:
+    state = {**prob}
+    grid = prob['grid_size']
+
+    for i, action in enumerate(plan):
         parts = action.split()
-        if parts[0] == 'move_character':
-            # direct move
-            new_state = {
-                'snow': state['snow'].copy(),
-                'balls': state['balls'].copy(),
-                'ball_size': state['ball_size'].copy(),
-                'character': parse_loc(parts[2]),
-                'grid_size': grid_size
-            }
-            frames.append((new_state, action))
-            state = new_state
-        elif parts[0] == 'move_ball':
-            b = parts[1]
-            to_coord = parse_loc(parts[4])
-            # intermediate mid-state
-            from_coord = state['balls'][b]
-            mid = ((from_coord[0] + to_coord[0]) / 2,
-                   (from_coord[1] + to_coord[1]) / 2)
-            mid_state = {
-                'snow': state['snow'].copy(),
-                'balls': state['balls'].copy(),
-                'ball_size': state['ball_size'].copy(),
-                'character': state['character'],
-                'mid_ball': (b, mid),
-                'grid_size': grid_size
-            }
-            frames.append((mid_state, action))
-            # final state
-            new_state = {
-                'snow': state['snow'].copy(),
-                'balls': state['balls'].copy(),
-                'ball_size': state['ball_size'].copy(),
-                'character': state['character'],
-                'grid_size': grid_size
-            }
-            new_state['balls'][b] = to_coord
-            # grow if snow
-            if new_state['snow'].get(to_coord, False):
-                new_state['ball_size'][b] += 1
-                new_state['snow'][to_coord] = False
-            frames.append((new_state, action))
-            state = new_state
+        step_label = f"Step {i + 1}: {action}"
+
+        if parts[0] == 'move_character' and len(parts) >= 3:
+            start = parse_loc(parts[1])
+            end = parse_loc(parts[2])
+            for t in range(SUBSTEPS):
+                alpha = t / (SUBSTEPS - 1)
+                interp = {
+                    'type': 'char_move', 'start': start, 'end': end, 'alpha': alpha,
+                    'balls': state['balls'].copy(), 'ball_size': state['ball_size'].copy(),
+                    'snow': state['snow'].copy(), 'grid_size': grid,
+                    'character': state['character'],
+                    'step_text': step_label if t == 0 else None
+                }
+                frames.append(interp)
+            state['character'] = end
+
+        elif parts[0] == 'move_ball' and len(parts) >= 5:
+            b, from_cell, mid_cell, to_cell = parts[1], parts[2], parts[3], parts[4]
+            start = parse_loc(from_cell)
+            end = parse_loc(to_cell)
+
+            # First move character to the ball's start position
+            char_start = state['character']
+            for t in range(SUBSTEPS):
+                alpha = t / (SUBSTEPS - 1)
+                interp = {
+                    'type': 'char_move', 'start': char_start, 'end': start, 'alpha': alpha,
+                    'balls': state['balls'].copy(), 'ball_size': state['ball_size'].copy(),
+                    'snow': state['snow'].copy(), 'grid_size': grid,
+                    'character': state['character'],
+                    'step_text': step_label if t == 0 else None
+                }
+                frames.append(interp)
+            state['character'] = start
+
+            # Then animate the ball move
+            for t in range(SUBSTEPS):
+                alpha = t / (SUBSTEPS - 1)
+                interp = {
+                    'type': 'ball_move', 'ball': b, 'start': start, 'end': end, 'alpha': alpha,
+                    'balls': state['balls'].copy(), 'ball_size': state['ball_size'].copy(),
+                    'snow': state['snow'].copy(), 'character': state['character'], 'grid_size': grid,
+                    'step_text': None  # Already printed above
+                }
+                frames.append(interp)
+            state['balls'][b] = end
+            if state['snow'].get(end):
+                state['ball_size'][b] += 1
+                state['snow'][end] = False
+
     return frames
 
-# Load
+# Load problem and plan
 problem = parse_problem(PROBLEM_FILE)
 plan = parse_plan(PLAN_FILE)
 frames = build_frames(problem, plan)
 
-# Visualization setup
-grid_size = problem['grid_size']
-interval = 500
-is_paused = False
-
-fig, ax = plt.subplots(figsize=(6,6))
-plt.subplots_adjust(bottom=0.2)
-pause_ax = plt.axes([0.45, 0.05, 0.1, 0.075])
-pause_btn = Button(pause_ax, 'Pause')
-
-step_text = ax.text(0.02, 0.95, '', transform=ax.transAxes, fontsize=12)
-desc_text = ax.text(0.5, -0.05, '', transform=ax.transAxes,
-                    fontsize=10, ha='center') if SHOW_DESCRIPTION else None
-
-def draw_person(ax, coord, carrying):
-    x, y = coord_to_plot(coord, grid_size)
-    ax.add_patch(patches.Circle((x,y-0.1),0.1,facecolor='black'))
-    ax.add_patch(patches.Rectangle((x-0.05,y-0.1),0.1,0.2,facecolor='black'))
-    for dx, dy in [(-0.05,-0.05),(0.05,-0.05)]:
-        ax.plot([x+dx,x+2*dx],[y,y+dy],'k-',lw=2)
-    for dx, dy in [(-0.05,0.1),(0.05,0.1)]:
-        ax.plot([x+dx,x+dx],[y+dy,y+0.2],'k-',lw=2)
-    if carrying:
-        ax.add_patch(patches.Circle((x+0.15,y-0.1),SMALL_RADIUS,
-                                    facecolor='white',edgecolor='navy',lw=2))
-
-def update(i):
-
-    state, action = frames[i]
+# Draw function
+def draw(ax, f):
     ax.clear()
     ax.axis('off')
-    # draw grid
-    for (r,c), snow in state['snow'].items():
-        x,y = coord_to_plot((r,c),grid_size)
-        col = 'lightcyan' if snow else 'lightgreen'
-        ax.add_patch(patches.Rectangle((x-0.5,y-0.5),1,1,facecolor=col,edgecolor='gray'))
-    # draw balls
-    cell_balls = {}
-    for b, coord in state['balls'].items():
-        cell_balls.setdefault(coord,[]).append(b)
-    # include mid_ball
-    if 'mid_ball' in state:
-        b, midc = state['mid_ball']
-        cell_balls.setdefault(midc,[]).append(b)
-    for coord, bs in cell_balls.items():
-        x,y = coord_to_plot(coord,grid_size)
-        bs_sorted = sorted(bs, key=lambda b: state['ball_size'][b], reverse=True)
-        for idx, b in enumerate(bs_sorted):
-            size = state['ball_size'][b]
-            radius = [SMALL_RADIUS, MEDIUM_RADIUS, LARGE_RADIUS][size]
-            y_off = -0.3 + idx*(radius*2 - 0.05)
-            ax.add_patch(patches.Circle((x,y+y_off),radius,facecolor='white',edgecolor='navy',lw=2))
-    # carrying true on real frames
-    carrying = action and action.startswith('move_ball')
-    draw_person(ax, state['character'], carrying)
-    # Calcola un indice di step “pulito” (skip frame 0 e mid-frames)
-    # Stampiamo solo se c'è un'azione reale e non è mid_ball
-    if SHOW_DESCRIPTION and action and 'mid_ball' not in state:
-        step_text.set_text(f"Step {update.real_step}/{len(plan)}")
-        desc_text.set_text(action)
-        print(f"[Step {update.real_step}/{len(plan)}] {action}")
-        update.real_step += 1
+    grid = f['grid_size']
+    ax.set_xlim(-0.5, grid - 0.5)
+    ax.set_ylim(-0.5, grid - 0.5)
+    for coord, is_snow in f['snow'].items():
+        x, y = coord_to_plot(coord, grid)
+        color = 'lightcyan' if is_snow else 'lightgreen'
+        ax.add_patch(patches.Rectangle((x - 0.5, y - 0.5), 1, 1, facecolor=color, edgecolor='gray'))
+
+    for b, pos in f['balls'].items():
+        if f['type'] == 'ball_move' and f['ball'] == b:
+            sx, sy = coord_to_plot(f['start'], grid)
+            ex, ey = coord_to_plot(f['end'], grid)
+            x = sx + f['alpha'] * (ex - sx)
+            y = sy + f['alpha'] * (ey - sy)
+        else:
+            x, y = coord_to_plot(pos, grid)
+        r = RADIUS.get(f['ball_size'].get(b, 0), 0.15)
+        ax.add_patch(patches.Circle((x, y), r, facecolor='white', edgecolor='navy', lw=2))
+    if f['type'] == 'char_move':
+        sx, sy = coord_to_plot(f['start'], grid)
+        ex, ey = coord_to_plot(f['end'], grid)
+        cx = sx + f['alpha'] * (ex - sx)
+        cy = sy + f['alpha'] * (ey - sy)
     else:
-        # Per i mid-frame o frame0, mantieni il contatore fisso
-        step_text.set_text(f"Step {update.real_step}/{len(plan)}")
+        cx, cy = coord_to_plot(f.get('character', problem['character']), problem['grid_size'])
+    ax.add_patch(patches.Circle((cx, cy - 0.1), 0.1, facecolor='black'))
+    ax.add_patch(patches.Rectangle((cx - 0.05, cy - 0.1), 0.1, 0.2, facecolor='black'))
 
-    return ax.patches + [step_text] + ([desc_text] if SHOW_DESCRIPTION else [])
+    if f.get('step_text'):
+        print(f['step_text'])
+        ax.text(0, grid + 0.2, f['step_text'], ha='left', va='bottom', fontsize=10, transform=ax.transData)
+        plt.pause(PLT_PAUSE)
 
-update.real_step = 0
+# Animation setup
+fig, ax = plt.subplots(figsize=(6, 6))
+paused = False
 
-ani = FuncAnimation(fig, update, frames=len(frames), interval=interval, blit=False)
+# Play/pause button callback
+def toggle(event):
+    global paused
+    paused = not paused
 
-def toggle_pause(event):
-    global is_paused
-    if is_paused:
-        ani.event_source.start(); pause_btn.label.set_text('Pause')
-    else:
-        ani.event_source.stop(); pause_btn.label.set_text('Play')
-    is_paused = not is_paused
+button_ax = plt.axes([0.4, 0.01, 0.2, 0.05])
+button = Button(button_ax, 'Play/Pause')
+button.on_clicked(toggle)
 
-pause_btn.on_clicked(toggle_pause)
+# Frame update
+current_frame = [0]
 
+def update(_):
+    if not paused:
+        draw(ax, frames[current_frame[0]])
+        current_frame[0] = (current_frame[0] + 1) % len(frames)
+
+ani = FuncAnimation(fig, update, frames=len(frames), interval=100)
 plt.show()
