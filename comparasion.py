@@ -103,7 +103,7 @@ def simulate_plan(log_file, problem_file):
     return action_counts, ball_growth_count, final_loc, final_sizes, computed_cost
 
 def main():
-    out_csv = 'out.csv'
+    out_csv = 'comparison_metrics.csv'
     # Fallback to user home directory if permission denied
     fallback_out_csv = os.path.join(os.path.expanduser('~'), 'out_snowman.csv')
     problem_file_map = {
@@ -184,11 +184,11 @@ def main():
         except PermissionError as e:
             print(f"Error: Permission denied when writing to {fallback_out_csv}: {e}")
             print("Troubleshooting steps:")
-            print("1. Ensure 'out.csv' is not open in another program (e.g., Excel).")
+            print("1. Ensure 'comparison_metrics.csv' is not open in another program (e.g., Excel).")
             print("2. Run PowerShell as Administrator: Right-click PowerShell, select 'Run as administrator'.")
             print("3. Check directory permissions: Right-click the project folder, Properties -> Security, ensure your user has 'Write' access.")
-            print(f"4. Manually delete 'out.csv' if it exists: del {out_csv}")
-            print(f"5. Try saving to a different location by modifying 'out_csv' in the script (e.g., 'C:\\Users\\{getpass.getuser()}\\Desktop\\out.csv').")
+            print(f"4. Manually delete 'comparison_metrics.csv' if it exists: del {out_csv}")
+            print(f"5. Try saving to a different location by modifying 'out_csv' in the script (e.g., 'C:\\Users\\{getpass.getuser()}\\Desktop\\comparison_metrics.csv').")
 
 if __name__ == "__main__":
     main()
