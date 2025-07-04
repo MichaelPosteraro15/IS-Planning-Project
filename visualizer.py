@@ -13,7 +13,7 @@ PLAN_FILE = 'plan_numeric.txt'
 RADIUS = {0: 0.15, 1: 0.25, 2: 0.35}
 SHOW_DESCRIPTION = True
 SUBSTEPS = 10  # frames per cell movement
-PLT_PAUSE = 0.03  # pause duration after each step
+PLT_PAUSE = 0.01  # pause duration after each step
 
 # Parsing helpers
 def parse_loc(loc):
