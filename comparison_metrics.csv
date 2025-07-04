@@ -1,0 +1,3 @@
+run_name,ground_time_ms,f_count,x_count,a_count,p_count,e_count,preproc_ms,search_time_ms,plan_length,plan_cost,expanded_nodes,evaluated_states,dead_ends,duplicates,move_character_count,move_ball_count,goal_count,ball_growth_count,final_ball_location,final_ball_sizes,computed_cost
+plan_classic,144,136,0,282,0,0,59,4537,96,12.0,2885,3089,171,3182,83,12,1,3,loc_3_1,"ball_0:0,ball_1:2,ball_2:1",95
+plan_numeric,187,85,24,282,0,0,51,1201,92,12.0,1815,1960,85,1805,79,12,1,3,loc_1_3,"ball_0:2,ball_1:1,ball_2:0",91
