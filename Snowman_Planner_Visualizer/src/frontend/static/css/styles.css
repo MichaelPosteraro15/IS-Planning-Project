@@ -1,0 +1,17 @@
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+.control-btn { transition: all 0.3s ease; min-width: 60px; }
+.control-btn:hover { transform: scale(1.1); }
+.control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+#controlPanel { position: absolute; top: 50px; left: 10px; background: rgba(75, 85, 99, 0.8); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); cursor: move; user-select: none; resize: both; min-width: 200px; min-height: 150px; max-width: 400px; max-height: 600px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
+#controlPanel.minimized { height: 40px; min-height: 40px; }
+#resizeHandle { width: 15px; height: 15px; position: absolute; bottom: 0; right: 0; cursor: se-resize; background: #4B5563; }
+#minimizeBtn { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; background: #EF4444; border-radius: 50%; text-align: center; line-height: 20px; color: white; cursor: pointer; }
+#minimizeBtn:hover { background: #DC2626; }
+#stepLogPanel { position: absolute; left: 10px; top: 70%; width: calc(35% - 20px); background: rgba(75, 85, 99, 0.8); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow-y: auto; height: 30%; z-index: 10; }
+#stepLogPanel textarea { width: 100%; height: 100%; background: transparent; border: none; color: #ffffff; font-family: Arial, sans-serif; font-size: 12px; resize: none; pointer-events: auto; }
+#canvas { position: absolute; top: 40px; right: 0; width: 65%; height: calc(100% - 40px - 30px); }
+#timelineCanvas { display: none; }
+header { position: absolute; top: 0; left: 0; width: 100%; background: linear-gradient(to right, #1e3a8a, #4b5cb6); color: white; padding: 5px 20px; text-align: center; font-family: 'Arial', sans-serif; font-size: 18px; font-weight: bold; z-index: 20; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); height: 40px; line-height: 30px; }
+footer { position: absolute; bottom: 0; left: 0; width: 100%; background: linear-gradient(to right, #1e3a8a, #4b5cb6); color: white; padding: 5px 20px; text-align: center; font-family: 'Arial', sans-serif; font-size: 12px; z-index: 20; height: 30px; line-height: 20px; }
