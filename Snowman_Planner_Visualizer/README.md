@@ -75,7 +75,6 @@ Snowman_Planner_Visualizer/
    ```bash
    pip install -r requirements.txt
    ```
-
 4. **Install the Project**:
    ```bash
    python setup.py install
