@@ -119,4 +119,4 @@ We welcome contributions! To contribute:
 
 
 ## License
-This project is licensed under the UINCAL License.
+This project is licensed under the MSC AI and CS students of UINCAL License.
