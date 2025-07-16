@@ -46,10 +46,6 @@ current_frame = [0]
 paused = [True]
 
 # Metrics calculation
-import time
-
-from datetime import datetime
-
 class MetricsCalculator:
     def __init__(self):
         self.reset()
@@ -537,13 +533,20 @@ def draw(ax, frame):
         ax.set_xlim(-0.5, grid - 0.5)
         ax.set_ylim(-0.5, grid - 0.5)
         
+        # Define special grid positions to be colored white
+        special_positions = [(1, 1), (1, 3), (3, 1), (3, 3)]  # (2,2), (2,4), (4,2), (4,4) in 1-based indexing
+        
         # Draw grid with enhanced styling
         for r in range(grid):
             for c in range(grid):
                 coord = (r, c)
                 x, y = coord_to_plot(coord, grid)
                 is_snow = frame['snow'].get(coord, False)
-                color = '#E0FFFF' if is_snow else '#90EE90'
+                # Set color to white for special positions, otherwise use snow/regular colors
+                if coord in special_positions:
+                    color = 'white'
+                else:
+                    color = '#E0FFFF' if is_snow else '#90EE90'
                 ax.add_patch(patches.Rectangle((x - 0.5, y - 0.5), 1, 1, 
                                              facecolor=color, edgecolor='black', linewidth=1,
                                              alpha=0.8))
