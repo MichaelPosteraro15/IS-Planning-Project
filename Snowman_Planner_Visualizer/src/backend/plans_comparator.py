@@ -209,11 +209,11 @@ class PlanComparatorApp(ttk.Frame):
                         self.txt2.insert(tk.END, '\n')
         self.txt1.config(state='disabled'); self.txt2.config(state='disabled')
 
-if __name__ == '__main__':
+"""if __name__ == '__main__':
     root = tk.Tk()
     app = PlanComparatorApp(root)
     root.mainloop()
-
+"""
 '''
 In the "Side-by-Side Diff" tab (third section):
 
@@ -226,3 +226,18 @@ in Plan A. These are therefore steps "inserted" with respect to the other plan.
 Lines without color (white) represent identical actions in both plans, kept "equal." 
 This way, you can immediately see which steps vary between the respective outputs.
 '''
+
+# unified_snowman_app/comparator/comparator_app.py
+
+def start_comparator():
+    try:
+        import matplotlib
+        matplotlib.use('TkAgg')
+        from pathlib import Path
+
+        with open(Path(__file__).parent / "../../plans_comparator.py") as f:
+            code = compile(f.read(), "comparator_app", "exec")
+            exec(code, globals())
+    except Exception as e:
+        import tkinter.messagebox as mb
+        mb.showerror("Comparator Error", str(e))
