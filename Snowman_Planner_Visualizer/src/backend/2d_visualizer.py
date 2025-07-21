@@ -13,14 +13,15 @@ from datetime import datetime
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 import matplotlib.font_manager as fm
-plt.rcParams['font.family'] = 'Segoe UI Emoji'
+
+
 
 # Configuration constants
 RADIUS = {0: 0.15, 1: 0.25, 2: 0.35}
 BALL_SIZE_LABELS = {0: '', 1: '', 2: ''}
 BALL_SIZE_NAMES = {0: 'Small', 1: 'Medium', 2: 'Large'}
 SHOW_DESCRIPTION = True
-SUBSTEPS = 10
+SUBSTEPS = 4
 PLT_PAUSE = 0.03
 
 # Global variables
@@ -188,7 +189,7 @@ def coord_to_plot(coord, grid_size):
     return c, grid_size-1-r
 
 def parse_problem(path):
-    """Problem parser with enhanced error handling"""
+    """Problem parser with enhanced error handling and blocked cell detection"""
     try:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Problem file not found: {path}")
@@ -196,17 +197,30 @@ def parse_problem(path):
         snow, balls, ball_size = {}, {}, {}
         character = None
         grid_positions = set()
+        valid_locations = set()  # Track valid (non-blocked) locations
         
         with open(path, 'r') as file:
             content = file.read()
             
             if not content.strip():
                 raise ValueError("Problem file is empty")
-                
-            # Parse location types (snow/regular)
+            
+            # First, identify all valid locations from the objects section (classic domain)
+            objects_match = re.search(r':objects\s+(.*?)\)', content, re.DOTALL)
+            if objects_match:
+                objects_section = objects_match.group(1)
+                # Find all location declarations
+                for match in re.finditer(r'(loc_\d+_\d+)\s*-\s*location', objects_section):
+                    loc = match.group(1)
+                    coord = parse_loc(loc)
+                    valid_locations.add(coord)
+                    grid_positions.add(coord)
+            
+            # Also check for location_type declarations (numeric domain)
             for match in re.finditer(r"\(= \(location_type (\S+)\) (\d+)\)", content):
                 loc, t = match.groups()
                 coord = parse_loc(loc)
+                valid_locations.add(coord)
                 snow[coord] = (t == '1')
                 grid_positions.add(coord)
             
@@ -215,14 +229,16 @@ def parse_problem(path):
                 loc = match.group(1)
                 coord = parse_loc(loc)
                 snow[coord] = True
+                valid_locations.add(coord)
                 grid_positions.add(coord)
             
-            # Parse ball positions and assign fixed names
-            ball_count = {'Small': 0, 'Medium': 0, 'Large': 0}
+            # Parse ball positions
             for match in re.finditer(r"\(ball_at (\S+) (\S+)\)", content):
                 ball, loc = match.groups()
-                grid_positions.add(parse_loc(loc))
-                balls[ball] = parse_loc(loc)
+                coord = parse_loc(loc)
+                grid_positions.add(coord)
+                valid_locations.add(coord)
+                balls[ball] = coord
                 
             # Parse ball sizes (numeric domain)
             for match in re.finditer(r"\(= \(ball_size (\S+)\) (\d+)\)", content):
@@ -230,23 +246,20 @@ def parse_problem(path):
                 size = int(size)
                 if size not in [0, 1, 2]:
                     raise ValueError(f"Invalid ball size {size} for ball {ball}")
-                ball_name = BALL_SIZE_NAMES[size]
-                ball_count[ball_name] += 1
                 ball_size[ball] = size
                 
-            # Parse ball sizes (classic domain) with numeric mapping
+            # Parse ball sizes (classic domain)
             for match in re.finditer(r"\(ball_size_(small|medium|large) (\S+)\)", content):
                 size_str, ball = match.groups()
                 size_map = {'small': 0, 'medium': 1, 'large': 2}
                 size = size_map.get(size_str.lower(), 0)
-                ball_name = BALL_SIZE_NAMES[size]
-                ball_count[ball_name] += 1
                 ball_size[ball] = size
                 
             # Parse character position
             char_match = re.search(r"\(character_at (\S+)\)", content)
             if char_match:
                 character = parse_loc(char_match.group(1))
+                valid_locations.add(character)
                 grid_positions.add(character)
                 
         # Validation
@@ -258,6 +271,7 @@ def parse_problem(path):
         for ball in balls:
             ball_size.setdefault(ball, 0)
             
+        # Determine grid size
         if grid_positions:
             max_r = max(r for r, _ in grid_positions)
             max_c = max(c for _, c in grid_positions)
@@ -265,17 +279,27 @@ def parse_problem(path):
         else:
             grid_size = 5
             
-        # Set default snow for non-specified locations
+        # Create blocked cells set - all cells that are NOT in valid_locations
+        blocked_cells = set()
         for r in range(grid_size):
             for c in range(grid_size):
-                snow.setdefault((r, c), False)
+                if (r, c) not in valid_locations:
+                    blocked_cells.add((r, c))
+        
+        # Set default snow for non-blocked locations
+        for r in range(grid_size):
+            for c in range(grid_size):
+                if (r, c) not in blocked_cells:
+                    snow.setdefault((r, c), False)
                 
         return {
             'snow': snow,
             'balls': balls,
             'ball_size': ball_size,
             'character': character,
-            'grid_size': grid_size
+            'grid_size': grid_size,
+            'blocked_cells': blocked_cells,  # Add blocked cells to the return
+            'valid_locations': valid_locations
         }
         
     except Exception as e:
@@ -341,7 +365,7 @@ def parse_plan(path):
         raise Exception(f"Error parsing plan file '{path}': {str(e)}")
 
 def build_frames(prob, plan):
-    """Frame builder with metrics tracking"""
+    """Frame builder with metrics tracking and blocked cells support"""
     try:
         frames = []
         state = {
@@ -350,11 +374,11 @@ def build_frames(prob, plan):
             'ball_size': prob['ball_size'].copy(),
             'character': prob['character'],
             'grid_size': prob['grid_size'],
+            'blocked_cells': prob['blocked_cells'],  # Pass blocked cells through
             'is_numeric': 'snowman_numeric' in prob.get('domain', '')
         }
         
         step_log = []
-        metrics_calculator.start_timing()
         
         initial_frame = {
             'type': 'initial',
@@ -363,6 +387,7 @@ def build_frames(prob, plan):
             'snow': state['snow'].copy(),
             'character': state['character'],
             'grid_size': state['grid_size'],
+            'blocked_cells': state['blocked_cells'],  # Include in frames
             'step_text': 'Initial State'
         }
         frames.append(initial_frame)
@@ -397,6 +422,7 @@ def build_frames(prob, plan):
                             'snow': state['snow'].copy(),
                             'character': state['character'],
                             'grid_size': state['grid_size'],
+                            'blocked_cells': state['blocked_cells'],
                             'step_text': step_label if t == 0 else None
                         }
                         frames.append(frame)
@@ -423,6 +449,7 @@ def build_frames(prob, plan):
                             'snow': state['snow'].copy(),
                             'character': state['character'],
                             'grid_size': state['grid_size'],
+                            'blocked_cells': state['blocked_cells'],
                             'step_text': step_label if t == 0 else None
                         }
                         frames.append(frame)
@@ -442,35 +469,31 @@ def build_frames(prob, plan):
                             'snow': state['snow'].copy(),
                             'character': state['character'],
                             'grid_size': state['grid_size'],
+                            'blocked_cells': state['blocked_cells'],
                             'step_text': None
                         }
                         frames.append(frame)
                     
                     state['balls'][ball] = end
-                    if state['snow'].get(end, False) and state.get('is_numeric', False):
-                        state['ball_size'][ball] = min(state['ball_size'][ball] + 1, 2)
-                        state['snow'][end] = False
-                    elif state['snow'].get(end, False) and not state.get('is_numeric', False):
+                    if state['snow'].get(end, False):
                         state['ball_size'][ball] = min(state['ball_size'][ball] + 1, 2)
                         state['snow'][end] = False
                         
                 elif parts[0] == 'goal':
-                    # Handle goal state for both classic and numeric domains
+                    # Handle goal state
                     if not state.get('is_numeric', False):
-                        # Classic domain: Set sizes for balls at loc_3_1
                         balls_at_goal = [b for b, pos in state['balls'].items() if pos == (2, 0)]
                         if len(balls_at_goal) >= 3:
-                            state['ball_size'][balls_at_goal[0]] = 2  # Large at bottom
-                            state['ball_size'][balls_at_goal[1]] = 1  # Medium in middle
-                            state['ball_size'][balls_at_goal[2]] = 0  # Small at top
+                            state['ball_size'][balls_at_goal[0]] = 2
+                            state['ball_size'][balls_at_goal[1]] = 1
+                            state['ball_size'][balls_at_goal[2]] = 0
                     else:
-                        # Numeric domain: Sort balls at loc_3_1 by size and adjust positions
                         balls_at_goal = [(b, state['ball_size'][b]) for b, pos in state['balls'].items() if pos == (2, 0)]
                         if len(balls_at_goal) >= 3:
-                            # Sort by size: Small (0) at top, Medium (1) in middle, Large (2) at bottom
                             balls_at_goal.sort(key=lambda x: x[1])
                             for idx, (ball, _) in enumerate(balls_at_goal):
-                                state['ball_size'][ball] = idx  # 0 = Small (top), 1 = Medium, 2 = Large (bottom)
+                                state['ball_size'][ball] = idx
+                                
                     for t in range(SUBSTEPS):
                         frame = {
                             'type': 'goal',
@@ -479,6 +502,7 @@ def build_frames(prob, plan):
                             'snow': state['snow'].copy(),
                             'character': state['character'],
                             'grid_size': state['grid_size'],
+                            'blocked_cells': state['blocked_cells'],
                             'step_text': step_label if t == 0 else None
                         }
                         frames.append(frame)
@@ -492,6 +516,7 @@ def build_frames(prob, plan):
                             'snow': state['snow'].copy(),
                             'character': state['character'],
                             'grid_size': state['grid_size'],
+                            'blocked_cells': state['blocked_cells'],
                             'step_text': f"Unknown action: {action}" if t == 0 else None
                         }
                         frames.append(frame)
@@ -506,26 +531,19 @@ def build_frames(prob, plan):
                         'snow': state['snow'].copy(),
                         'character': state['character'],
                         'grid_size': state['grid_size'],
+                        'blocked_cells': state['blocked_cells'],
                         'step_text': f"Error in action: {action}" if t == 0 else None
                     }
                     frames.append(frame)
                 continue
-            
-            metrics_calculator.process_action(action, state_before, state)
-        
-        metrics_calculator.end_timing()
-        
-        os.makedirs('data', exist_ok=True)
-        with open('data/step_log.json', 'w') as f:
-            json.dump(step_log, f, indent=2)
         
         return frames
         
     except Exception as e:
         raise Exception(f"Error building frames: {e}")
-
+    
 def draw(ax, frame):
-    """Enhanced drawing function with improved visualization and proper ball stacking"""
+    """Enhanced drawing function with blocked cells visualization"""
     try:
         ax.clear()
         ax.axis('off')
@@ -533,117 +551,124 @@ def draw(ax, frame):
         ax.set_xlim(-0.5, grid - 0.5)
         ax.set_ylim(-0.5, grid - 0.5)
         
-        # Define special grid positions to be colored white
-        special_positions = [(1, 1), (1, 3), (3, 1), (3, 3)]  # (2,2), (2,4), (4,2), (4,4) in 1-based indexing
+        blocked_cells = frame.get('blocked_cells', set())
         
-        # Draw grid with enhanced styling
+        # Draw grid with enhanced styling including blocked cells
         for r in range(grid):
             for c in range(grid):
                 coord = (r, c)
                 x, y = coord_to_plot(coord, grid)
-                is_snow = frame['snow'].get(coord, False)
-                # Set color to white for special positions, otherwise use snow/regular colors
-                if coord in special_positions:
-                    color = 'white'
+                
+                # Determine cell color based on type
+                if coord in blocked_cells:
+                    # Blocked cells - dark color (impassable)
+                    color = '#2F2F2F'  # Dark gray for blocked cells
+                    edge_color = 'black'
+                    edge_width = 2
                 else:
-                    color = '#E0FFFF' if is_snow else '#90EE90'
+                    # Regular cells
+                    is_snow = frame['snow'].get(coord, False)
+                    color = '#E0FFFF' if is_snow else '#90EE90'  # Light blue for snow, light green for regular
+                    edge_color = 'black'
+                    edge_width = 1
+                
                 ax.add_patch(patches.Rectangle((x - 0.5, y - 0.5), 1, 1, 
-                                             facecolor=color, edgecolor='black', linewidth=1,
-                                             alpha=0.8))
-                # Add grid coordinates
-                ax.text(x, y + 0.4, f"({r+1},{c+1})", ha='center', va='center', 
-                        fontsize=6, color='gray')
-        
-        # Group balls by position to handle stacking
-        balls_by_position = {}
-        for b, pos in frame['balls'].items():
-            if frame['type'] == 'ball_move' and frame['ball'] == b:
-                sx, sy = coord_to_plot(frame['start'], grid)
-                ex, ey = coord_to_plot(frame['end'], grid)
-                x = sx + frame['alpha'] * (ex - sx)
-                y = sy + frame['alpha'] * (ey - sy)
-                ball_pos = (x, y)
-            else:
-                ball_pos = coord_to_plot(pos, grid)
-            
-            if ball_pos not in balls_by_position:
-                balls_by_position[ball_pos] = []
-            balls_by_position[ball_pos].append((b, frame['ball_size'].get(b, 0)))
-        
-        # Draw balls with proper stacking (largest to smallest, bottom to top)
-        for position, balls_at_pos in balls_by_position.items():
-            x, y = position
-            
-            if len(balls_at_pos) == 1:
-                # Single ball at this position
-                ball_name, ball_size = balls_at_pos[0]
-                r = RADIUS.get(ball_size, 0.15)
-                ax.add_patch(patches.Circle((x, y), r, facecolor='white', edgecolor='navy', lw=2))
-            else:
-                # Multiple balls at same position - stack them properly
-                # Sort by size: largest (2) to smallest (0)
-                balls_at_pos.sort(key=lambda x: x[1], reverse=True)
+                                             facecolor=color, edgecolor=edge_color, 
+                                             linewidth=edge_width, alpha=0.8))
                 
-                # Calculate vertical offsets for stacking
-                vertical_spacing = 0.15  # Adjust this value to control spacing between stacked balls
-                
-                for i, (ball_name, ball_size) in enumerate(balls_at_pos):
-                    # Calculate stacked position
-                    stack_y = y + (i * vertical_spacing)
-                    r = RADIUS.get(ball_size, 0.15)
-                    
-                    # Draw the ball
-                    ax.add_patch(patches.Circle((x, stack_y), r, facecolor='white', 
-                                               edgecolor='navy', lw=2, zorder=10 + i))
-                    
-                    # Optional: Add size label on balls for debugging
-                    if ball_size in BALL_SIZE_LABELS:
-                        ax.text(x, stack_y, BALL_SIZE_LABELS[ball_size], 
-                               ha='center', va='center', fontsize=8, fontweight='bold',
-                               color='navy', zorder=11 + i)
+                # Add grid coordinates (skip for blocked cells to keep them clean)
+                if coord not in blocked_cells:
+                    ax.text(x, y + 0.4, f"({r+1},{c+1})", ha='center', va='center', 
+                            fontsize=6, color='gray')
+                else:
+                    # Optional: Add an 'X' or block symbol for blocked cells
+                    ax.text(x, y, '■', ha='center', va='center', 
+                            fontsize=20, color='red', weight='bold')
         
         # Draw character
-        if frame['type'] == 'char_move':
-            sx, sy = coord_to_plot(frame['start'], grid)
-            ex, ey = coord_to_plot(frame['end'], grid)
-            cx = sx + frame['alpha'] * (ex - sx)
-            cy = sy + frame['alpha'] * (ey - sy)
-        else:
-            cx, cy = coord_to_plot(frame['character'], grid)
+        # Draw character
+        if frame['character'] is not None:
+            if frame['type'] == 'char_move':
+                sx, sy = coord_to_plot(frame['start'], grid)
+                ex, ey = coord_to_plot(frame['end'], grid)
+                cx = sx + frame['alpha'] * (ex - sx)
+                cy = sy + frame['alpha'] * (ey - sy)
+            else:
+                cx, cy = coord_to_plot(frame['character'], grid)
+            
+            # Character head
+            char_head = patches.Circle((cx, cy + 0.05), 0.07, 
+                                       facecolor='#FFDAB9', edgecolor='black', 
+                                       linewidth=1.5, zorder=12)
+            ax.add_patch(char_head)
+            ax.add_patch(patches.Arc((cx, cy + 0.03), 0.04, 0.02, angle=0, theta1=200, theta2=340, 
+                 color='black', linewidth=1, zorder=13))
+
+            # Character legs
+            ax.add_patch(patches.Rectangle((cx - 0.03, cy - 0.25), 0.03, 0.1, 
+                                         facecolor='#0000FF', edgecolor='#00008B', zorder=12))
+            ax.add_patch(patches.Rectangle((cx + 0.01, cy - 0.25), 0.03, 0.1, 
+                                         facecolor='#0000FF', edgecolor='#00008B', zorder=12))
+            
+            # Character body
+            ax.add_patch(patches.Rectangle((cx - 0.06, cy - 0.15), 0.12, 0.14, 
+                                         facecolor='#FF0000', edgecolor='#8B0000', 
+                                         linewidth=2, zorder=12))
+            
+            # Character eyes
+            ax.add_patch(patches.Circle((cx - 0.02, cy + 0.07), 0.01, 
+                                       facecolor='black', zorder=13))
+            ax.add_patch(patches.Circle((cx + 0.02, cy + 0.07), 0.01, 
+                                       facecolor='black', zorder=13))
         
-        # Character head
-        ax.add_patch(patches.Circle((cx, cy + 0.05), 0.07, 
-                                   facecolor='#FFDAB9', edgecolor='black', 
-                                   linewidth=1.5, zorder=12))
-        # Character body
-        ax.add_patch(patches.Rectangle((cx - 0.06, cy - 0.15), 0.12, 0.2, 
-                                     facecolor='#FF0000', edgecolor='#8B0000', 
-                                     linewidth=2, zorder=12))
-        # Character legs
-        ax.add_patch(patches.Rectangle((cx - 0.03, cy - 0.25), 0.03, 0.1, 
-                                     facecolor='#0000FF', edgecolor='#00008B', zorder=12))
-        ax.add_patch(patches.Rectangle((cx + 0.01, cy - 0.25), 0.03, 0.1, 
-                                     facecolor='#0000FF', edgecolor='#00008B', zorder=12))
+        # Draw balls with proper stacking
+        ball_positions = {}
+        for ball, pos in frame['balls'].items():
+            if frame['type'] == 'ball_move' and frame['ball'] == ball:
+                start_pos = frame['start']
+                end_pos = frame['end']
+                alpha = frame['alpha']
+                ball_r = start_pos[0] + alpha * (end_pos[0] - start_pos[0])
+                ball_c = start_pos[1] + alpha * (end_pos[1] - start_pos[1])
+                pos = (ball_r, ball_c)
+            
+            if pos not in ball_positions:
+                ball_positions[pos] = []
+            ball_positions[pos].append((ball, frame['ball_size'][ball]))
         
-        # Character eyes
-        ax.add_patch(patches.Circle((cx - 0.02, cy + 0.07), 0.01, 
-                                   facecolor='black', zorder=13))
-        ax.add_patch(patches.Circle((cx + 0.02, cy + 0.07), 0.01, 
-                                   facecolor='black', zorder=13))
+        # Draw stacked balls
+        for pos, balls_here in ball_positions.items():
+            balls_here.sort(key=lambda x: x[1], reverse=True)  # Sort by size (largest first)
+            x, y = coord_to_plot(pos, grid)
+            
+            for i, (ball, size) in enumerate(balls_here):
+                offset_y = i * 0.15
+                size_map = {0: 0.15, 1: 0.2, 2: 0.25}
+                
+                radius = size_map[size]
+                
+                ax.add_patch(patches.Circle((x, y + offset_y), radius, 
+                                          facecolor='white', edgecolor='black', linewidth=1))
+                ax.text(x, y + offset_y, ['S', 'M', 'L'][size], ha='center', va='center', 
+                       fontsize=8, color='black', weight='bold')
         
-        # Display step text
-        if frame.get('step_text') and SHOW_DESCRIPTION:
-            ax.text(0.02, 0.98, frame['step_text'], transform=ax.transAxes, 
-                    fontsize=10, verticalalignment='top', 
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor='yellow', 
-                             edgecolor='black', alpha=0.9))
-                    
+        text = frame.get('step_text')
+        step_text_artist.set_text(text)
+        
+        # Add legend
+        legend_elements = [
+            patches.Patch(color='#90EE90', label='Regular Cell'),
+            patches.Patch(color='#E0FFFF', label='Snow Cell'),
+            patches.Patch(color='#2F2F2F', label='Blocked Cell'),
+            patches.Circle((0, 0), 0.1, facecolor='#FFDAB9', edgecolor='orange', label='Character'),
+            patches.Circle((0, 0), 0.1, facecolor='white', edgecolor='black', label='Snow balls'),
+                    ]
+        ax.legend(handles=legend_elements, loc='lower right', bbox_to_anchor=(1.00, -0.2))
+        
     except Exception as e:
-        print(f"Error drawing frame: {e}")
-        ax.clear()
-        ax.axis('off')
-        ax.text(0.5, 0.5, f"Drawing Error: {str(e)}", ha='center', va='center', 
-                fontsize=12, color='red', transform=ax.transAxes)
+        print(f"Error in draw function: {e}")
+        ax.text(0.5, 0.5, f"Drawing Error: {e}", ha='center', va='center', 
+               transform=ax.transAxes, fontsize=12, color='red')
 def reset_ui():
     """Reset the entire UI to initial state"""
     global problem, plan, frames, current_metrics, visualization_completed, metrics_window, ani, animation_running
@@ -682,22 +707,22 @@ def reset_ui():
         ax.axis('off')
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
-        ax.text(0.5, 0.6, '🎯 Snowman Planner Visualizer', 
+        ax.text(0.5, 0.6, 'Snowman Planner Visualizer', 
                 ha='center', va='center', fontsize=18, fontweight='bold', color='#2E7D32')
         ax.text(0.5, 0.45, 'Select Problem and Plan files, then click "Load Files"', 
                 ha='center', va='center', fontsize=12, color='#424242')
         ax.text(0.5, 0.35, 'Use the controls below to navigate through the animation', 
                 ha='center', va='center', fontsize=10, style='italic', color='#666666')
-        ax.text(0.5, 0.25, '✨ Features: Real-time metrics, Step-by-step visualization, Export capabilities', 
+        ax.text(0.5, 0.25, 'Features: Real-time metrics, Step-by-step visualization, Export capabilities', 
                 ha='center', va='center', fontsize=9, color='#1976D2')
     
-    if problem_label:
+    if not problem_label:
         problem_label.set_text("Problem: Not selected")
-    if plan_label:
+    if not plan_label:
         plan_label.set_text("Plan: Not selected")
     
     if fig:
-        fig.suptitle("🎯 Snowman Planner Visualizer", fontsize=16, fontweight='bold')
+        fig.suptitle("Snowman Planner Visualizer", fontsize=16, fontweight='bold')
         fig.canvas.draw()
     
     print("UI Reset Complete")
@@ -892,14 +917,14 @@ def show_metrics_popup():
     }
     
     text.insert(tk.END, f"{'='*60}\n")
-    text.insert(tk.END, f"🎯 SNOWMAN PLANNER EXECUTION METRICS\n")
+    text.insert(tk.END, f"SNOWMAN PLANNER EXECUTION METRICS\n")
     text.insert(tk.END, f"{'='*60}\n\n")
     
     for category, metrics in [
-        ('📋 EXECUTION INFO', execution_metrics),
-        ('📊 PLAN METRICS', plan_metrics),
-        ('📮 ACTION BREAKDOWN', action_metrics),
-        ('🎯 FINAL STATE', final_state)
+        ('EXECUTION INFO', execution_metrics),
+        ('PLAN METRICS', plan_metrics),
+        ('ACTION BREAKDOWN', action_metrics),
+        ('FINAL STATE', final_state)
     ]:
         text.insert(tk.END, f"{category}\n")
         text.insert(tk.END, f"{'-'*40}\n")
@@ -918,7 +943,7 @@ def show_metrics_popup():
     text.insert(tk.END, "• Ball Growth: Number of times balls grew in size\n")
     text.insert(tk.END, "• Execution Time: Time taken to process the entire visualization\n\n")
     
-    text.insert(tk.END, "🎯 OPTIMIZATION HINTS\n")
+    text.insert(tk.END, "OPTIMIZATION HINTS\n")
     text.insert(tk.END, f"{'-'*40}\n")
     text.insert(tk.END, "• Lower plan length = more efficient solution\n")
     text.insert(tk.END, "• Minimize character movements for better performance\n")
@@ -930,13 +955,13 @@ def show_metrics_popup():
     button_frame = tk.Frame(metrics_window, bg='#f5f5f5')
     button_frame.pack(fill='x', padx=15, pady=10)
     
-    close_button = tk.Button(button_frame, text="✅ Close", 
+    close_button = tk.Button(button_frame, text="Close", 
                             command=metrics_window.destroy,
                             font=('Arial', 10, 'bold'), bg='#1976D2', fg='white',
                             relief='flat', padx=20, pady=5)
     close_button.pack(side='right')
     
-    export_button = tk.Button(button_frame, text="💾 Export CSV", 
+    export_button = tk.Button(button_frame, text="Export CSV", 
                              command=lambda: export_metrics_csv(),
                              font=('Arial', 10, 'bold'), bg='#388E3C', fg='white',
                              relief='flat', padx=20, pady=5)
@@ -1061,7 +1086,7 @@ def step_forward(event):
             fig.suptitle(f"Snowman Planner Visualizer - Progress: {progress:.1f}%", 
                         fontsize=14, fontweight='bold')
             fig.canvas.draw()
-            print(f"👉 Step forward: {current_frame[0] + 1}/{len(frames)}")
+            print(f"Step forward: {current_frame[0] + 1}/{len(frames)}")
             
     except Exception as e:
         print(f"Step forward error: {e}")
@@ -1080,7 +1105,7 @@ def step_backward(event):
             fig.suptitle(f"Snowman Planner Visualizer - Progress: {progress:.1f}%", 
                         fontsize=14, fontweight='bold')
             fig.canvas.draw()
-            print(f"👈 Step backward: {current_frame[0] + 1}/{len(frames)}")
+            print(f"Step backward: {current_frame[0] + 1}/{len(frames)}")
             
     except Exception as e:
         print(f"Step backward error: {e}")
@@ -1179,28 +1204,29 @@ def update_animation_speed(val):
 def show_help():
     """Show help dialog with usage instructions"""
     help_text = """
-🎯 SNOWMAN PLANNER VISUALIZER HELP
 
-📁 LOADING FILES:
+    SNOWMAN PLANNER VISUALIZER HELP
+
+LOADING FILES:
 • Click "Select Problem" to choose a .pddl problem file
 • Click "Select Plan" to choose a .txt plan file
 • Click "Load Files" to process and prepare visualization
 
-🎮 CONTROLS:
+CONTROLS:
 • ▶ Play/Pause: Start or stop animation (Space)
 • ⏮ Step Back: Move one frame backward (Left Arrow)
 • ⏭ Step Forward: Move one frame forward (Right Arrow)
-• 🔄 Restart: Reset animation to beginning (R)
-• 🔧 Reset: Clear all data and start over
-• 📊 Metrics: View metrics (M)
-• ❓ Help: Show this dialog (H)
+• Restart: Reset animation to beginning (R)
+• Reset: Clear all data and start over
+• Metrics: View metrics (M)
+• Help: Show this dialog (H)
 
-📊 METRICS:
+METRICS:
 • View detailed execution metrics
 • Export metrics to CSV format
 • Automatic metrics calculation and logging
 
-🎯 FEATURES:
+FEATURES:
 • Real-time visualization of PDDL plan execution
 • Character and ball movement animation
 • Snow interaction and ball growth simulation
@@ -1295,57 +1321,75 @@ def show_settings_menu():
     close_button.grid(row=6, column=0, pady=15)
 
 # Initialize matplotlib figure and UI
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
+
+# Funzione helper per bottoni arrotondati
+def modern_button(ax, label, callback, color, hovercolor):
+    btn = Button(ax, label, color=color, hovercolor=hovercolor)
+    # Simula arrotondamento con padding sul label
+    btn.label.set_fontsize(10)
+    btn.label.set_fontweight('bold')
+    btn.label.set_color('white')
+    btn.ax.patch.set_capstyle('round')
+    btn.on_clicked(callback)
+    return btn
+
+# Colori a tema
+BLUE, BLUE_HOVER   = '#1976D2', '#1565C0'
+GREEN, GREEN_HOVER = '#388E3C', '#2E7D32'
+GRAY, GRAY_HOVER   = '#616161', '#424242'
+
+# === Initialize matplotlib figure and UI ===
 fig, ax = plt.subplots(figsize=(12, 10))
 fig.suptitle("🎯 Snowman Planner Visualizer", fontsize=16, fontweight='bold')
-
-# Animation state variables
-current_frame = [0]
-paused = [True]
-
-# Create UI elements
 plt.subplots_adjust(bottom=0.25)
 
+step_text_artist = ax.text(
+    0.02, 0.98,                   # coordinate relative
+    "",                           # testo iniziale vuoto
+    transform=ax.transAxes, 
+    fontsize=12, 
+    verticalalignment='top',
+    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+)
+
+
+# Info file
 file_frame_ax = plt.axes([0.05, 0.15, 0.9, 0.08])
-file_frame_ax.set_xlim(0, 1)
-file_frame_ax.set_ylim(0, 1)
 file_frame_ax.axis('off')
+problem_label = file_frame_ax.text(0.02, 0.7, "Problem: Not selected", fontsize=10, transform=file_frame_ax.transAxes)
+plan_label    = file_frame_ax.text(0.02, 0.3, "Plan: Not selected",    fontsize=10, transform=file_frame_ax.transAxes)
 
-problem_label = file_frame_ax.text(0.02, 0.7, "Problem: Not selected", 
-                                  fontsize=10, transform=file_frame_ax.transAxes)
-plan_label = file_frame_ax.text(0.02, 0.3, "Plan: Not selected", 
-                               fontsize=10, transform=file_frame_ax.transAxes)
+# Dimensioni bottoni
+btn_h, btn_w = 0.045, 0.12
+btn_y        = 0.02
 
-button_height = 0.04
-button_width = 0.12
-button_y = 0.02
+# === FILE BUTTONS (blu) ===
+ax1 = plt.axes([0.05, 0.08, btn_w, btn_h])
+problem_button = modern_button(ax1, 'Select Problem', lambda ev: select_problem_file(), BLUE, BLUE_HOVER)
 
-problem_btn_ax = plt.axes([0.05, 0.08, button_width, button_height])
-problem_button = Button(problem_btn_ax, '📁 Select Problem')
-problem_button.on_clicked(lambda x: select_problem_file())
+ax2 = plt.axes([0.18, 0.08, btn_w, btn_h])
+plan_button = modern_button(ax2, 'Select Plan', lambda ev: select_plan_file(), BLUE, BLUE_HOVER)
 
-plan_btn_ax = plt.axes([0.18, 0.08, button_width, button_height])
-plan_button = Button(plan_btn_ax, '📋 Select Plan')
-plan_button.on_clicked(lambda x: select_plan_file())
+ax3 = plt.axes([0.31, 0.08, btn_w, btn_h])
+load_button = modern_button(ax3, 'Load Files',   lambda ev: load_files(),          BLUE, BLUE_HOVER)
 
-load_btn_ax = plt.axes([0.31, 0.08, button_width, button_height])
-load_button = Button(load_btn_ax, '🚀 Load Files')
-load_button.on_clicked(lambda x: load_files())
+# === ANIMATION CONTROLS (verde) ===
+ax4 = plt.axes([0.05, btn_y, btn_w, btn_h])
+step_back_button    = modern_button(ax4, 'Step Back',      step_backward, GREEN, GREEN_HOVER)
 
-step_back_btn_ax = plt.axes([0.05, button_y, button_width, button_height])
-step_back_button = Button(step_back_btn_ax, '⏮ Step Back')
-step_back_button.on_clicked(step_backward)
+ax5 = plt.axes([0.18, btn_y, btn_w, btn_h])
+toggle_button       = modern_button(ax5, '▶ Play',           toggle_animation, GREEN, GREEN_HOVER)
 
-toggle_btn_ax = plt.axes([0.18, button_y, button_width, button_height])
-toggle_button = Button(toggle_btn_ax, '▶ Play')
-toggle_button.on_clicked(toggle_animation)
+ax6 = plt.axes([0.31, btn_y, btn_w, btn_h])
+step_forward_button = modern_button(ax6, 'Step Forward',   step_forward, GREEN, GREEN_HOVER)
 
-step_forward_btn_ax = plt.axes([0.31, button_y, button_width, button_height])
-step_forward_button = Button(step_forward_btn_ax, '⏭ Step Forward')
-step_forward_button.on_clicked(step_forward)
+# === SETTINGS (grigio) ===
+ax7 = plt.axes([0.44, btn_y, btn_w * 1.5, btn_h])
+settings_button     = modern_button(ax7, 'Settings',      lambda ev: show_settings_menu(), GRAY, GRAY_HOVER)
 
-settings_btn_ax = plt.axes([0.44, button_y, button_width * 1.5, button_height])
-settings_button = Button(settings_btn_ax, '⚙️ Settings')
-settings_button.on_clicked(lambda x: show_settings_menu())
+# Non serve toccare il resto del codice, i callback sono gli stessi della tua versione originale.
 
 # Keyboard shortcuts
 def on_key_press(event):
