@@ -1,158 +1,126 @@
-header {
-    background-color: rgba(0, 0, 0, 0.7);
-    color: white;
-    text-align: center;
-    padding: 10px;
-    font-size: 24px;
-    font-weight: bold;
-    position: relative;
-    z-index: 10;
-}
+/* Keyframe animations for fade-in and pulse effects */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        /* Styling for control panel buttons */
+        .control-btn {
+            transition: all 0.3s ease;
+            min-width: 60px;
+            display: flex; /* Use flexbox to align icon and text */
+            align-items: center; /* Vertically center */
+            justify-content: center; /* Horizontally center */
+            gap: 4px; /* Space between icon and text */
+            padding: 8px 12px; /* Adjust padding for better look with icon+text */
+        }
+        .control-btn:hover { transform: scale(1.1); }
+        .control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .control-btn svg { width: 20px; height: 20px; fill: currentColor; } /* Style for SVG icons */
 
-#menuBtn {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 24px;
-    cursor: pointer;
-    color: white;
-}
-
-#menuDropdown {
-    display: none;
-    position: absolute;
-    top: 40px;
-    right: 10px;
-    background-color: rgba(0, 0, 0, 0.8);
-    border-radius: 5px;
-    padding: 10px;
-    z-index: 20;
-}
-
-#menuDropdown button {
-    display: block;
-    color: white;
-    background: none;
-    border: none;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-#menuDropdown button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-#canvas {
-    position: absolute;
-    top: 50px;
-    left: 0;
-    width: 65%;
-    height: calc(100% - 70px);
-}
-
-#controlPanel {
-    position: absolute;
-    top: 50px;
-    left: calc(65% + 10px);
-    width: 30%;
-    min-width: 250px;
-    max-width: 400px;
-    height: auto;
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    cursor: move;
-    z-index: 10;
-}
-
-#controlPanel.minimized {
-    height: 40px;
-    overflow: hidden;
-}
-
-#minimizeBtn {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 20px;
-    height: 20px;
-    background-color: #ff4d4d;
-    color: white;
-    border-radius: 50%;
-    text-align: center;
-    line-height: 20px;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-#resizeHandle {
-    position: absolute;
-    bottom: 5px;
-    right: 5px;
-    width: 10px;
-    height: 10px;
-    background-color: #ccc;
-    cursor: se-resize;
-}
-
-.control-btn {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 8px 12px;
-    font-size: 14px;
-    transition: background-color 0.2s;
-}
-
-.control-btn svg {
-    width: 20px;
-    height: 20px;
-}
-
-#controlPanel input[type="file"] {
-    width: 100%;
-}
-
-#errorPopup, #helpPopup, #metricsPopup, #aboutPopup {
-    display: none;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background-color: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    z-index: 100;
-    max-width: 400px;
-    text-align: center;
-}
-
-#errorPopup button, #helpPopup button, #metricsPopup button, #aboutPopup button {
-    margin-top: 10px;
-    padding: 5px 10px;
-    background-color: #ff4d4d;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-footer {
-    position: absolute;
-    bottom: 0;
-    width: 65%;
-    text-align: center;
-    color: white;
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 5px;
-    font-size: 14px;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
+        /* Styling for the main control panel */
+        #controlPanel {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            background: rgba(75, 85, 99, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            cursor: move;
+            user-select: none;
+            resize: both; /* Allows resizing */
+            min-width: 200px;
+            min-height: 150px;
+            max-width: 400px;
+            max-height: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 10;
+        }
+        /* Style for minimized control panel */
+        #controlPanel.minimized { height: 40px; min-height: 40px; }
+        /* Resize handle for the control panel */
+        #resizeHandle { width: 15px; height: 15px; position: absolute; bottom: 0; right: 0; cursor: se-resize; background: #4B5563; }
+        /* Minimize button for the control panel */
+        #minimizeBtn { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; background: #EF4444; border-radius: 50%; text-align: center; line-height: 20px; color: white; cursor: pointer; }
+        #minimizeBtn:hover { background: #DC2626; }
+        /* Canvas positioning */
+        #canvas { position: absolute; top: 40px; right: 0; width: 65%; height: calc(100% - 40px - 30px); }
+        #timelineCanvas { display: none; } /* Not used in this version */
+        /* Header styling */
+        header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: linear-gradient(to right, #1e3a8a, #4b5cb6);
+            color: white;
+            padding: 5px 20px;
+            text-align: center;
+            font-family: 'Arial', sans-serif;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 20;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            height: 40px;
+            line-height: 30px;
+        }
+        /* Footer styling */
+        footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: linear-gradient(to right, #1e3a8a, #4b5cb6);
+            color: white;
+            padding: 5px 20px;
+            text-align: center;
+            font-family: 'Arial', sans-serif;
+            font-size: 12px;
+            z-index: 20;
+            height: 30px;
+            line-height: 20px;
+        }
+        /* Styling for pop-up messages */
+        #errorPopup, #helpPopup, #metricsPopup, #aboutPopup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(75, 85, 99, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 100;
+            display: none; /* Hidden by default */
+            max-width: 400px;
+            text-align: left;
+        }
+        #errorPopup { background: rgba(255, 75, 75, 0.9); } /* Red background for errors */
+        /* Pop-up button styling */
+        #errorPopup button, #helpPopup button, #metricsPopup button, #aboutPopup button {
+            background: #2563EB;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        #errorPopup button:hover, #helpPopup button:hover, #metricsPopup button:hover, #aboutPopup button:hover { background: #1D4ED8; }
+        /* Menu button styling */
+        #menuBtn { position: absolute; top: 5px; right: 30px; width: 20px; height: 20px; background: #2563EB; border-radius: 50%; text-align: center; line-height: 20px; color: white; cursor: pointer; }
+        #menuBtn:hover { background: #1D4ED8; }
+        /* Menu dropdown styling */
+        #menuDropdown {
+            position: absolute;
+            top: 30px;
+            right: 10px;
+            background: rgba(75, 85, 99, 0.9);
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            display: none; /* Hidden by default */
+            z-index: 100;
+        }
+        #menuDropdown button { display: block; width: 100%; padding: 10px; color: white; background: none; border: none; text-align: left; cursor: pointer; }
+        #menuDropdown button:hover { background: rgba(255, 255, 255, 0.1); }
