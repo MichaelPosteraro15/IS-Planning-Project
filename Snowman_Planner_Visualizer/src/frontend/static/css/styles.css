@@ -1,126 +1,281 @@
-/* Keyframe animations for fade-in and pulse effects */
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
-        /* Styling for control panel buttons */
-        .control-btn {
-            transition: all 0.3s ease;
-            min-width: 60px;
-            display: flex; /* Use flexbox to align icon and text */
-            align-items: center; /* Vertically center */
-            justify-content: center; /* Horizontally center */
-            gap: 4px; /* Space between icon and text */
-            padding: 8px 12px; /* Adjust padding for better look with icon+text */
-        }
-        .control-btn:hover { transform: scale(1.1); }
-        .control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .control-btn svg { width: 20px; height: 20px; fill: currentColor; } /* Style for SVG icons */
+/* 
+ * Keyframe Animations
+ * Defines animations for smooth transitions and visual effects.
+ */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
 
-        /* Styling for the main control panel */
-        #controlPanel {
-            position: absolute;
-            top: 50px;
-            left: 10px;
-            background: rgba(75, 85, 99, 0.8);
-            padding: 10px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            cursor: move;
-            user-select: none;
-            resize: both; /* Allows resizing */
-            min-width: 200px;
-            min-height: 150px;
-            max-width: 400px;
-            max-height: 600px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            z-index: 10;
-        }
-        /* Style for minimized control panel */
-        #controlPanel.minimized { height: 40px; min-height: 40px; }
-        /* Resize handle for the control panel */
-        #resizeHandle { width: 15px; height: 15px; position: absolute; bottom: 0; right: 0; cursor: se-resize; background: #4B5563; }
-        /* Minimize button for the control panel */
-        #minimizeBtn { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; background: #EF4444; border-radius: 50%; text-align: center; line-height: 20px; color: white; cursor: pointer; }
-        #minimizeBtn:hover { background: #DC2626; }
-        /* Canvas positioning */
-        #canvas { position: absolute; top: 40px; right: 0; width: 65%; height: calc(100% - 40px - 30px); }
-        #timelineCanvas { display: none; } /* Not used in this version */
-        /* Header styling */
-        header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            background: linear-gradient(to right, #1e3a8a, #4b5cb6);
-            color: white;
-            padding: 5px 20px;
-            text-align: center;
-            font-family: 'Arial', sans-serif;
-            font-size: 18px;
-            font-weight: bold;
-            z-index: 20;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            height: 40px;
-            line-height: 30px;
-        }
-        /* Footer styling */
-        footer {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background: linear-gradient(to right, #1e3a8a, #4b5cb6);
-            color: white;
-            padding: 5px 20px;
-            text-align: center;
-            font-family: 'Arial', sans-serif;
-            font-size: 12px;
-            z-index: 20;
-            height: 30px;
-            line-height: 20px;
-        }
-        /* Styling for pop-up messages */
-        #errorPopup, #helpPopup, #metricsPopup, #aboutPopup {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(75, 85, 99, 0.9);
-            color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            z-index: 100;
-            display: none; /* Hidden by default */
-            max-width: 400px;
-            text-align: left;
-        }
-        #errorPopup { background: rgba(255, 75, 75, 0.9); } /* Red background for errors */
-        /* Pop-up button styling */
-        #errorPopup button, #helpPopup button, #metricsPopup button, #aboutPopup button {
-            background: #2563EB;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        #errorPopup button:hover, #helpPopup button:hover, #metricsPopup button:hover, #aboutPopup button:hover { background: #1D4ED8; }
-        /* Menu button styling */
-        #menuBtn { position: absolute; top: 5px; right: 30px; width: 20px; height: 20px; background: #2563EB; border-radius: 50%; text-align: center; line-height: 20px; color: white; cursor: pointer; }
-        #menuBtn:hover { background: #1D4ED8; }
-        /* Menu dropdown styling */
-        #menuDropdown {
-            position: absolute;
-            top: 30px;
-            right: 10px;
-            background: rgba(75, 85, 99, 0.9);
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            display: none; /* Hidden by default */
-            z-index: 100;
-        }
-        #menuDropdown button { display: block; width: 100%; padding: 10px; color: white; background: none; border: none; text-align: left; cursor: pointer; }
-        #menuDropdown button:hover { background: rgba(255, 255, 255, 0.1); }
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* 
+ * Global Layout
+ * Styles for the main structural elements of the page.
+ */
+header {
+    /* Fixed header at the top with a gradient background */
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: linear-gradient(to right, #1e3a8a, #4b5cb6); /* Blue gradient for visual appeal */
+    color: #ffffff; /* White text for high contrast */
+    padding: 8px 20px; /* Increased padding for better spacing */
+    text-align: center;
+    font-family: 'Arial', sans-serif;
+    font-size: 18px;
+    font-weight: bold;
+    z-index: 20; /* Ensure header is above other elements */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
+    height: 40px;
+    line-height: 24px; /* Centered text vertically */
+}
+
+footer {
+    /* Fixed footer at the bottom with matching gradient */
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: linear-gradient(to right, #1e3a8a, #4b5cb6);
+    color: #ffffff;
+    padding: 8px 20px;
+    text-align: center;
+    font-family: 'Arial', sans-serif;
+    font-size: 12px;
+    z-index: 20;
+    height: 30px;
+    line-height: 14px; /* Adjusted for vertical centering */
+}
+
+/* 
+ * Canvas Styling
+ * Styles for the Three.js canvas element.
+ */
+#canvas {
+    position: absolute;
+    top: 40px; /* Below header */
+    right: 0;
+    width: 65%; /* Matches layout from original HTML */
+    height: calc(100% - 70px); /* Accounts for header and footer */
+}
+
+/* Hidden timeline canvas (not used in this version) */
+#timelineCanvas {
+    display: none;
+}
+
+/* 
+ * Control Panel Styling
+ * Styles for the interactive control panel, including drag and resize functionality.
+ */
+#controlPanel {
+    /* Positioned control panel with semi-transparent background */
+    position: absolute;
+    top: 50px; /* Below header */
+    left: 10px;
+    background: rgba(75, 85, 99, 0.85); /* Slightly more opaque for better readability */
+    padding: 12px; /* Increased padding for comfort */
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Enhanced shadow for depth */
+    cursor: move; /* Indicates draggability */
+    user-select: none; /* Prevents text selection during drag */
+    resize: both; /* Enables resizing via browser’s resize handle */
+    min-width: 200px;
+    min-height: 150px;
+    max-width: 400px;
+    max-height: 600px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px; /* Consistent spacing between elements */
+    z-index: 10; /* Below header but above canvas */
+    overflow: auto; /* Handle overflow during resizing */
+}
+
+/* Minimized state for control panel */
+#controlPanel.minimized {
+    height: 40px;
+    min-height: 40px;
+    overflow: hidden; /* Hide content when minimized */
+}
+
+/* Resize handle for manual resizing */
+#resizeHandle {
+    width: 15px;
+    height: 15px;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    background: #4b5563; /* Gray color for visibility */
+    cursor: se-resize; /* Diagonal resize cursor */
+}
+
+/* Minimize button for collapsing the control panel */
+#minimizeBtn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 20px;
+    height: 20px;
+    background: #ef4444; /* Red for visibility */
+    border-radius: 50%;
+    text-align: center;
+    line-height: 20px;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 14px; /* Slightly smaller for better fit */
+    transition: background 0.3s ease; /* Smooth hover transition */
+}
+
+#minimizeBtn:hover {
+    background: #dc2626; /* Darker red on hover */
+}
+
+/* 
+ * Control Buttons
+ * Styles for buttons within the control panel (Play, Pause, Next, etc.).
+ */
+.control-btn {
+    transition: all 0.3s ease; /* Smooth transitions for hover and scale */
+    min-width: 60px;
+    display: flex;
+    align-items: center; /* Center icon and text vertically */
+    justify-content: center; /* Center horizontally */
+    gap: 6px; /* Slightly increased gap for clarity */
+    padding: 8px 12px;
+    font-size: 14px;
+    font-family: 'Arial', sans-serif;
+    border-radius: 9999px; /* Consistent with Tailwind’s rounded-full */
+    background: #2563eb; /* Blue to match theme */
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+}
+
+.control-btn:hover {
+    transform: scale(1.1); /* Subtle scale on hover */
+    background: #1d4ed8; /* Darker blue for hover */
+}
+
+.control-btn:disabled {
+    opacity: 0.5; /* Dimmed appearance when disabled */
+    cursor: not-allowed; /* Clear feedback for disabled state */
+}
+
+.control-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor; /* Inherits button text color */
+}
+
+/* 
+ * Pop-up Styling
+ * Styles for error, help, metrics, and about pop-ups.
+ */
+#errorPopup,
+#helpPopup,
+#metricsPopup,
+#aboutPopup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(75, 85, 99, 0.9); /* Semi-transparent gray */
+    color: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Slightly stronger shadow */
+    z-index: 100;
+    display: none; /* Hidden by default */
+    max-width: 400px;
+    text-align: left;
+    font-family: 'Arial', sans-serif;
+    font-size: 14px;
+}
+
+/* Specific styling for error pop-up */
+#errorPopup {
+    background: rgba(255, 75, 75, 0.9); /* Red to indicate errors */
+}
+
+/* Buttons within pop-ups */
+#errorPopup button,
+#helpPopup button,
+#metricsPopup button,
+#aboutPopup button {
+    background: #2563eb; /* Blue to match theme */
+    color: #ffffff;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 12px; /* Slightly more spacing */
+    font-family: 'Arial', sans-serif;
+    font-size: 14px;
+    transition: background 0.3s ease;
+}
+
+#errorPopup button:hover,
+#helpPopup button:hover,
+#metricsPopup button:hover,
+#aboutPopup button:hover {
+    background: #1d4ed8; /* Darker blue on hover */
+}
+
+/* 
+ * Menu Button and Dropdown
+ * Styles for the hamburger menu and its dropdown.
+ */
+#menuBtn {
+    position: absolute;
+    top: 8px; /* Adjusted for better alignment with header */
+    right: 30px;
+    width: 24px; /* Slightly larger for better click target */
+    height: 24px;
+    background: #2563eb;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s ease;
+}
+
+#menuBtn:hover {
+    background: #1d4ed8;
+}
+
+#menuDropdown {
+    position: absolute;
+    top: 40px;
+    right: 10px;
+    background: rgba(75, 85, 99, 0.9); /* Matches control panel */
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    display: none; /* Hidden by default */
+    z-index: 100;
+    min-width: 120px; /* Ensure dropdown has enough width */
+}
+
+#menuDropdown button {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    color: #ffffff;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: 'Arial', sans-serif;
+    font-size: 14px;
+}
+
+#menuDropdown button:hover {
+    background: rgba(255, 255, 255, 0.15); /* Slightly lighter hover effect */
+}
