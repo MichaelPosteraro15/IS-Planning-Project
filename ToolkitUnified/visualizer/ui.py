@@ -3,21 +3,13 @@ from tkinter import filedialog, messagebox, ttk
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from matplotlib.widgets import Button
-from .core import *
-from .metrics import show_metrics_popup
-import time
-
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.animation import FuncAnimation
 from .core import *
 from .metrics import show_metrics_popup
 import time
+import platform
+import os
 
 class VisualizerApp(tk.Frame):
     def __init__(self, parent):
@@ -34,23 +26,33 @@ class VisualizerApp(tk.Frame):
         self.ani = None
         self.metrics_calculator = MetricsCalculator()
         
-        # Modern color scheme (aggiornato)
+        # Modern color scheme
         self.colors = {
-            'primary':        '#00695C',  # Teal scuro
-            'secondary':      '#0288D1',  # Blu medio
-            'accent':         '#FFB300',  # Giallo ambra
-            'success':        '#2E7D32',  # Verde scuro
-            'warning':        '#F57C00',  # Arancio intenso
-            'error':          '#D32F2F',  # Rosso scuro
-            'background':     '#F5F5F5',
-            'surface':        '#FFFFFF',
-            'text_primary':   '#212121',
+            'primary': '#00695C',  # Teal scuro
+            'secondary': '#0288D1',  # Blu medio
+            'accent': '#FFB300',  # Giallo ambra
+            'success': '#2E7D32',  # Verde scuro
+            'warning': '#F57C00',  # Arancio intenso
+            'error': '#D32F2F',  # Rosso scuro
+            'background': '#F5F5F5',
+            'surface': '#FFFFFF',
+            'text_primary': '#212121',
             'text_secondary': '#616161',
         }
         
+        # Handle Windows DPI scaling
+        if platform.system() == 'Windows':
+            try:
+                from ctypes import windll
+                windll.shcore.SetProcessDpiAwareness(1)
+                print("Windows DPI awareness set")
+            except Exception as e:
+                print(f"DPI awareness error: {e}")
+
         self.configure_styles()
         self.create_widgets()
         self.reset_ui()
+        print("VisualizerApp initialized")
 
     def configure_styles(self):
         """Configure modern ttk styles"""
@@ -59,12 +61,12 @@ class VisualizerApp(tk.Frame):
                         borderwidth=0,
                         focuscolor='none',
                         relief='flat',
-                        padding=(12, 8))
+                        padding=(10, 6))
         style.configure('Accent.TButton',
                         borderwidth=0,
                         focuscolor='none',
                         relief='flat',
-                        padding=(12, 8))
+                        padding=(10, 6))
         style.configure('Card.TFrame',
                         relief='flat',
                         borderwidth=1,
@@ -79,16 +81,19 @@ class VisualizerApp(tk.Frame):
     def create_widgets(self):
         self.configure(bg=self.colors['background'])
         plt.style.use('seaborn-v0_8-whitegrid')
-        self.fig, self.ax = plt.subplots(figsize=(12, 8))
+        self.fig, self.ax = plt.subplots(figsize=(7, 5))  # Smaller size for better fit
+        plt.subplots_adjust(left=0.1, right=0.9, top=0.85, bottom=0.3)  # Increased bottom margin
         self.fig.patch.set_facecolor(self.colors['surface'])
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
         canvas_widget = self.canvas.get_tk_widget()
         canvas_widget.configure(highlightthickness=0)
         canvas_widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=(10,5))
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self, pack_toolbar=False)
         self.toolbar.configure(bg=self.colors['surface'])
         self.toolbar.update()
         self.toolbar.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0,5))
+        self.canvas.draw()  # Force redraw
+        print("Matplotlib toolbar created, packed, and redrawn")
         self.step_text_artist = self.ax.text(
             0.02, 0.98, "", transform=self.ax.transAxes, 
             fontsize=11, verticalalignment='top', fontfamily='sans-serif',
@@ -96,7 +101,6 @@ class VisualizerApp(tk.Frame):
                       alpha=0.9, edgecolor=self.colors['primary'], linewidth=1)
         )
         self.create_header_section()
-        self.create_file_selection_section()
         self.create_control_section()
 
     def create_header_section(self):
@@ -122,19 +126,26 @@ class VisualizerApp(tk.Frame):
                                      bg=self.colors['background'])
         self.status_label.pack(side=tk.RIGHT)
 
-    def create_file_selection_section(self):
-        file_card = tk.Frame(self, bg=self.colors['surface'], relief='solid', bd=1)
-        file_card.pack(fill=tk.X, padx=10, pady=5)
-        card_header = tk.Frame(file_card, bg=self.colors['surface'])
+    def create_control_section(self):
+        # Single card for file selection and animation controls
+        control_card = tk.Frame(self, bg=self.colors['surface'], relief='solid', bd=1)
+        control_card.pack(fill=tk.X, padx=10, pady=5)
+        card_header = tk.Frame(control_card, bg=self.colors['surface'])
         card_header.pack(fill=tk.X, padx=15, pady=(10,5))
         tk.Label(card_header, 
-                 text="📁 File Selection",
+                 text="📁 Controls",
                  font=('Segoe UI', 11, 'bold'),
                  fg=self.colors['text_primary'],
                  bg=self.colors['surface']).pack(side=tk.LEFT)
-        button_frame = tk.Frame(file_card, bg=self.colors['surface'])
-        button_frame.pack(fill=tk.X, padx=15, pady=5)
-        self.problem_btn = tk.Button(button_frame, 
+        
+        # Main control frame with side-by-side layout
+        main_control_frame = tk.Frame(control_card, bg=self.colors['surface'])
+        main_control_frame.pack(fill=tk.X, padx=15, pady=5)
+        
+        # Left: File selection controls
+        file_frame = tk.Frame(main_control_frame, bg=self.colors['surface'])
+        file_frame.pack(side=tk.LEFT, fill=tk.X, expand=False)
+        self.problem_btn = tk.Button(file_frame, 
                                      text="📋 Select Problem",
                                      command=self.select_problem_file,
                                      font=('Segoe UI', 9),
@@ -143,9 +154,9 @@ class VisualizerApp(tk.Frame):
                                      activebackground=self.colors['secondary'],
                                      relief='flat',
                                      cursor='hand2',
-                                     padx=15, pady=8)
-        self.problem_btn.pack(side=tk.LEFT, padx=(0,10))
-        self.plan_btn = tk.Button(button_frame, 
+                                     padx=10, pady=6)
+        self.problem_btn.pack(side=tk.LEFT, padx=(0,5))
+        self.plan_btn = tk.Button(file_frame, 
                                   text="📝 Select Plan",
                                   command=self.select_plan_file,
                                   font=('Segoe UI', 9),
@@ -154,9 +165,9 @@ class VisualizerApp(tk.Frame):
                                   activebackground=self.colors['secondary'],
                                   relief='flat',
                                   cursor='hand2',
-                                  padx=15, pady=8)
-        self.plan_btn.pack(side=tk.LEFT, padx=(0,10))
-        self.load_btn = tk.Button(button_frame, 
+                                  padx=10, pady=6)
+        self.plan_btn.pack(side=tk.LEFT, padx=(0,5))
+        self.load_btn = tk.Button(file_frame, 
                                   text="🚀 Load Files",
                                   command=self.load_files,
                                   font=('Segoe UI', 9, 'bold'),
@@ -165,38 +176,13 @@ class VisualizerApp(tk.Frame):
                                   activebackground='#FFA000',
                                   relief='flat',
                                   cursor='hand2',
-                                  padx=20, pady=8)
+                                  padx=10, pady=6)
         self.load_btn.pack(side=tk.LEFT)
-        status_frame = tk.Frame(file_card, bg=self.colors['surface'])
-        status_frame.pack(fill=tk.X, padx=15, pady=(5,10))
-        self.problem_label = tk.Label(status_frame, 
-                                      text="Problem: Not selected",
-                                      font=('Segoe UI', 9),
-                                      fg=self.colors['text_secondary'],
-                                      bg=self.colors['surface'])
-        self.problem_label.pack(anchor=tk.W)
-        self.plan_label = tk.Label(status_frame, 
-                                   text="Plan: Not selected",
-                                   font=('Segoe UI', 9),
-                                   fg=self.colors['text_secondary'],
-                                   bg=self.colors['surface'])
-        self.plan_label.pack(anchor=tk.W)
-
-    def create_control_section(self):
-        control_card = tk.Frame(self, bg=self.colors['surface'], relief='solid', bd=1)
-        control_card.pack(fill=tk.X, padx=10, pady=5)
-        card_header = tk.Frame(control_card, bg=self.colors['surface'])
-        card_header.pack(fill=tk.X, padx=15, pady=(10,5))
-        tk.Label(card_header, 
-                 text="🎮 Animation Controls",
-                 font=('Segoe UI', 11, 'bold'),
-                 fg=self.colors['text_primary'],
-                 bg=self.colors['surface']).pack(side=tk.LEFT)
-        button_frame = tk.Frame(control_card, bg=self.colors['surface'])
-        button_frame.pack(fill=tk.X, padx=15, pady=5)
-        left_controls = tk.Frame(button_frame, bg=self.colors['surface'])
-        left_controls.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Button(left_controls, 
+        
+        # Right: Animation controls and speed slider
+        anim_frame = tk.Frame(main_control_frame, bg=self.colors['surface'])
+        anim_frame.pack(side=tk.RIGHT, fill=tk.X, expand=False)
+        tk.Button(anim_frame, 
                   text="⏮️ Step Back",
                   command=self.step_backward,
                   font=('Segoe UI', 9),
@@ -205,8 +191,8 @@ class VisualizerApp(tk.Frame):
                   activebackground='#039BE5',
                   relief='flat',
                   cursor='hand2',
-                  padx=12, pady=8).pack(side=tk.LEFT, padx=(0,5))
-        self.toggle_btn = tk.Button(left_controls, 
+                  padx=10, pady=6).pack(side=tk.LEFT, padx=(0,5))
+        self.toggle_btn = tk.Button(anim_frame, 
                                    text="▶️ Play",
                                    command=self.toggle_animation,
                                    font=('Segoe UI', 9, 'bold'),
@@ -215,9 +201,9 @@ class VisualizerApp(tk.Frame):
                                    activebackground='#1B5E20',
                                    relief='flat',
                                    cursor='hand2',
-                                   padx=20, pady=8)
-        self.toggle_btn.pack(side=tk.LEFT, padx=(0,8))
-        tk.Button(left_controls, 
+                                   padx=10, pady=6)
+        self.toggle_btn.pack(side=tk.LEFT, padx=(0,5))
+        tk.Button(anim_frame, 
                   text="⏭️ Step Forward",
                   command=self.step_forward,
                   font=('Segoe UI', 9),
@@ -226,8 +212,8 @@ class VisualizerApp(tk.Frame):
                   activebackground='#039BE5',
                   relief='flat',
                   cursor='hand2',
-                  padx=12, pady=8).pack(side=tk.LEFT, padx=(0,5))
-        tk.Button(left_controls, 
+                  padx=10, pady=6).pack(side=tk.LEFT, padx=(0,5))
+        tk.Button(anim_frame, 
                   text="🔄 Restart",
                   command=self.restart_animation,
                   font=('Segoe UI', 9),
@@ -236,11 +222,8 @@ class VisualizerApp(tk.Frame):
                   activebackground='#E65100',
                   relief='flat',
                   cursor='hand2',
-                  padx=12, pady=8).pack(side=tk.LEFT, padx=(0,5))
-        right_controls = tk.Frame(button_frame, bg=self.colors['surface'])
-        right_controls.pack(side=tk.RIGHT)
-        
-        tk.Button(right_controls, 
+                  padx=10, pady=6).pack(side=tk.LEFT, padx=(0,5))
+        tk.Button(anim_frame, 
                   text="⚙️ Settings",
                   command=self.show_settings_menu,
                   font=('Segoe UI', 9),
@@ -249,7 +232,9 @@ class VisualizerApp(tk.Frame):
                   activebackground=self.colors['secondary'],
                   relief='flat',
                   cursor='hand2',
-                  padx=15, pady=8).pack(side=tk.RIGHT, padx=(5,0))
+                  padx=10, pady=6).pack(side=tk.LEFT, padx=(0,5))
+        
+        # Speed slider below
         speed_frame = tk.Frame(control_card, bg=self.colors['surface'])
         speed_frame.pack(fill=tk.X, padx=15, pady=(5,10))
         tk.Label(speed_frame, 
@@ -266,12 +251,25 @@ class VisualizerApp(tk.Frame):
                                      bg=self.colors['surface'],
                                      activebackground=self.colors['primary'],
                                      highlightthickness=0,
-                                     length=200)
+                                     length=150)
         self.speed_slider.set(50)
         self.speed_slider.pack(side=tk.RIGHT, padx=(10,0))
-
-    # ... il resto dei metodi rimane invariato ...
-
+        
+        # File status labels
+        status_frame = tk.Frame(control_card, bg=self.colors['surface'])
+        status_frame.pack(fill=tk.X, padx=15, pady=(5,10))
+        self.problem_label = tk.Label(status_frame, 
+                                      text="Problem: Not selected",
+                                      font=('Segoe UI', 9),
+                                      fg=self.colors['text_secondary'],
+                                      bg=self.colors['surface'])
+        self.problem_label.pack(anchor=tk.W)
+        self.plan_label = tk.Label(status_frame, 
+                                   text="Plan: Not selected",
+                                   font=('Segoe UI', 9),
+                                   fg=self.colors['text_secondary'],
+                                   bg=self.colors['surface'])
+        self.plan_label.pack(anchor=tk.W)
 
     def update_status(self, message, status_type="info"):
         """Update status indicator with modern styling"""
@@ -281,7 +279,6 @@ class VisualizerApp(tk.Frame):
             "warning": self.colors['warning'],
             "error": self.colors['error']
         }
-        
         self.status_label.config(text=message)
         self.status_indicator.config(fg=colors.get(status_type, self.colors['text_secondary']))
 
@@ -315,15 +312,15 @@ class VisualizerApp(tk.Frame):
         
         # Modern welcome text
         self.ax.text(0.5, 0.65, 'Snowman Planner Visualizer', 
-                    ha='center', va='center', fontsize=20, fontweight='bold', 
+                    ha='center', va='center', fontsize=18, fontweight='bold', 
                     color=self.colors['primary'], fontfamily='sans-serif')
         
         self.ax.text(0.5, 0.52, 'Select Problem and Plan files, then click "Load Files"', 
-                    ha='center', va='center', fontsize=12, 
+                    ha='center', va='center', fontsize=11, 
                     color=self.colors['text_primary'], fontfamily='sans-serif')
         
-        self.ax.text(0.5, 0.42, 'Use the animation controls to navigate through the visualization', 
-                    ha='center', va='center', fontsize=10, style='italic', 
+        self.ax.text(0.5, 0.42, 'Use the controls to navigate the visualization', 
+                    ha='center', va='center', fontsize=9, style='italic', 
                     color=self.colors['text_secondary'], fontfamily='sans-serif')
         
         # Feature highlights
@@ -336,7 +333,7 @@ class VisualizerApp(tk.Frame):
         
         for i, feature in enumerate(features):
             self.ax.text(0.5, 0.28 - i*0.04, feature, 
-                        ha='center', va='center', fontsize=9, 
+                        ha='center', va='center', fontsize=8, 
                         color=self.colors['secondary'], fontfamily='sans-serif')
         
         # Reset file status
@@ -345,7 +342,7 @@ class VisualizerApp(tk.Frame):
         self.plan_label.config(text="Plan: Not selected", 
                               fg=self.colors['text_secondary'])
         
-        self.fig.suptitle("", fontsize=16, fontweight='bold')
+        self.fig.suptitle("", fontsize=14, fontweight='bold')
         self.canvas.draw()
         
         self.update_status("Ready", "info")
@@ -408,7 +405,7 @@ class VisualizerApp(tk.Frame):
             if self.frames:
                 draw(self.ax, self.frames[0], self.step_text_artist)
                 self.fig.suptitle("Snowman Planner Visualizer - Ready to Play", 
-                                 fontsize=14, fontweight='bold', color=self.colors['primary'])
+                                 fontsize=12, fontweight='bold', color=self.colors['primary'])
                 self.canvas.draw()
                 
             self.update_status("Files loaded successfully!", "success")
@@ -444,7 +441,7 @@ class VisualizerApp(tk.Frame):
         
         progress = (frame_num) / max(len(self.frames), 1) * 100
         self.fig.suptitle(f"Snowman Planner Visualizer - Progress: {progress:.1f}%", 
-                         fontsize=14, fontweight='bold', color=self.colors['primary'])
+                         fontsize=12, fontweight='bold', color=self.colors['primary'])
         self.canvas.draw()
         self.animation_running = True
         self.update_status(f"Playing animation - {progress:.1f}%", "info")
@@ -494,7 +491,7 @@ class VisualizerApp(tk.Frame):
             draw(self.ax, self.frames[self.current_frame], self.step_text_artist)
             progress = (self.current_frame) / max(len(self.frames), 1) * 100
             self.fig.suptitle(f"Snowman Planner Visualizer - Progress: {progress:.1f}%", 
-                             fontsize=14, fontweight='bold', color=self.colors['primary'])
+                             fontsize=12, fontweight='bold', color=self.colors['primary'])
             self.canvas.draw()
             self.update_status(f"Step {self.current_frame + 1}/{len(self.frames)}", "info")
 
@@ -508,7 +505,7 @@ class VisualizerApp(tk.Frame):
             draw(self.ax, self.frames[self.current_frame], self.step_text_artist)
             progress = (self.current_frame) / max(len(self.frames), 1) * 100
             self.fig.suptitle(f"Snowman Planner Visualizer - Progress: {progress:.1f}%", 
-                             fontsize=14, fontweight='bold', color=self.colors['primary'])
+                             fontsize=12, fontweight='bold', color=self.colors['primary'])
             self.canvas.draw()
             self.update_status(f"Step {self.current_frame + 1}/{len(self.frames)}", "info")
 
@@ -531,7 +528,7 @@ class VisualizerApp(tk.Frame):
         
         draw(self.ax, self.frames[0], self.step_text_artist)
         self.fig.suptitle("Snowman Planner Visualizer - Ready to Play", 
-                         fontsize=14, fontweight='bold', color=self.colors['primary'])
+                         fontsize=12, fontweight='bold', color=self.colors['primary'])
         self.canvas.draw()
         self.update_status("Animation restarted", "info")
 
@@ -575,7 +572,6 @@ class VisualizerApp(tk.Frame):
         
         # Modern buttons
         buttons = [
-            #("📊 View Metrics", self.show_metrics),
             ("🔄 Restart Animation", self.restart_animation),
             ("🔧 Reset Application", self.reset_ui),
             ("❓ Show Help", self.show_help),
