@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snowman Planner Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+            }
+        }
+    </script>
+    <style>
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        .control-btn { transition: all 0.3s ease; min-width: 60px; }
+        .control-btn:hover { transform: scale(1.1); }
+        .control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        #controlPanel { position: absolute; top: 50px; left: 10px; background: rgba(75, 85, 99, 0.8); padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); cursor: move; user-select: none; resize: both; min-width: 200px; min-height: 150px; max-width: 400px; max-height: 600px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
+        #controlPanel.minimized { height: 40px; min-height: 40px; }
+        #resizeHandle { width: 15px; height: 15px; position: absolute; bottom: 0; right: 0; cursor: se-resize; background: #4B5563; }
+        #minimizeBtn { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; background: #EF4444; border-radius: 50%; text-align: center; line-height: 20px; color: white; cursor: pointer; }
+        #minimizeBtn:hover { background: #DC2626; }
+        #canvas { position: absolute; top: 40px; right: 0; width: 65%; height: calc(100% - 40px - 30px); }
+        #timelineCanvas { display: none; }
+        header { position: absolute; top: 0; left: 0; width: 100%; background: linear-gradient(to right, #1e3a8a, #4b5cb6); color: white; padding: 5px 20px; text-align: center; font-family: 'Arial', sans-serif; font-size: 18px; font-weight: bold; z-index: 20; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); height: 40px; line-height: 30px; }
+        footer { position: absolute; bottom: 0; left: 0; width: 100%; background: linear-gradient(to right, #1e3a8a, #4b5cb6); color: white; padding: 5px 20px; text-align: center; font-family: 'Arial', sans-serif; font-size: 12px; z-index: 20; height: 30px; line-height: 20px; }
+        #errorPopup, #helpPopup, #metricsPopup, #aboutPopup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(75, 85, 99, 0.9); color: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); z-index: 100; display: none; max-width: 400px; text-align: left; }
+        #errorPopup { background: rgba(255, 75, 75, 0.9); }
+        #errorPopup button, #helpPopup button, #metricsPopup button, #aboutPopup button { background: #2563EB; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+        #errorPopup button:hover, #helpPopup button:hover, #metricsPopup button:hover, #aboutPopup button:hover { background: #1D4ED8; }
+        #menuBtn { position: absolute; top: 5px; right: 30px; width: 20px; height: 20px; background: #2563EB; border-radius: 50%; text-align: center; line-height: 20px; color: white; cursor: pointer; }
+        #menuBtn:hover { background: #1D4ED8; }
+        #menuDropdown { position: absolute; top: 30px; right: 10px; background: rgba(75, 85, 99, 0.9); border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); display: none; z-index: 100; }
+        #menuDropdown button { display: block; width: 100%; padding: 10px; color: white; background: none; border: none; text-align: left; cursor: pointer; }
+        #menuDropdown button:hover { background: rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body class="m-0 bg-gradient-to-b from-blue-900 to-gray-900">
+    <div id="app" class="relative w-full h-screen">
+        <header>
+            Snowman Planner Visualizer - Intelligent System Planning
+            <div id="menuBtn">☰</div>
+            <div id="menuDropdown">
+                <button id="helpBtn">Help</button>
+                <button id="metricsBtn">Metrics</button>
+                <button id="aboutBtn">About</button>
+            </div>
+        </header>
+        <canvas id="canvas"></canvas>
+        <div id="controlPanel" class="animate-[fadeIn_0.5s]">
+            <div id="minimizeBtn">-</div>
+            <label class="text-white text-lg font-bold mb-2">Choose Files</label>
+            <div class="flex flex-col gap-2">
+                <label class="text-gray-300 text-sm">Problem File (.pddl):</label>
+                <input id="problemFile" type="file" accept=".pddl" class="mb-3 text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700">
+                <label class="text-gray-300 text-sm">Plan File (.txt/.plan):</label>
+                <input id="planFile" type="file" accept=".txt,.plan" class="mb-3 text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700">
+            </div>
+            <div class="flex flex-wrap justify-between gap-2">
+                <button id="stepBackward" class="control-btn bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-full shadow-md" disabled>Prev</button>
+                <button id="playPause" class="control-btn bg-green-500 hover:bg-green-600 text-white py-2 rounded-full shadow-md" disabled>Play</button>
+                <button id="stepForward" class="control-btn bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-full shadow-md" disabled>Next</button>
+                <button id="reset" class="control-btn bg-red-500 hover:bg-red-600 text-white py-2 rounded-full shadow-md" disabled>Reset</button>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-gray-300 text-sm">Speed:</label>
+                <input id="speed" type="range" min="0.5" max="5" step="0.1" value="1" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-gray-300 text-sm">Snow Speed:</label>
+                <input id="snowSpeed" type="range" min="0.1" max="0.5" step="0.1" value="0.2" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer">
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-gray-300 text-sm">Step:</label>
+                <input id="step" type="range" min="0" max="0" step="1" value="0" class="w-full h-2 bg-gray-700 rounded-lg cursor-pointer" disabled>
+            </div>
+            <div id="resizeHandle"></div>
+        </div>
+        <div id="errorPopup">
+            <p id="errorMessage"></p>
+            <button id="errorClose">Close</button>
+        </div>
+        <div id="helpPopup">
+            <p id="helpMessage">
+                <strong>How to Use the Snowman Planner Visualizer:</strong><br>
+                1. Select a problem file (.pddl) using the "Problem File" input.<br>
+                2. Select a plan file (.txt or .plan) using the "Plan File" input.<br>
+                3. Use the "Play/Pause" button to start or pause the animation.<br>
+                4. Use "Next" and "Prev" to step through the plan manually.<br>
+                5. Adjust the "Speed" slider to control animation speed.<br>
+                6. Adjust the "Snow Speed" slider to control snowflake fall speed.<br>
+                7. Use the "Step" slider to jump to a specific step.<br>
+                8. Click "Reset" to clear the scene and start over.<br>
+                9. Drag the control panel to reposition it, resize it using the bottom-right corner, or minimize it using the red button.
+            </p>
+            <button id="helpClose">Close</button>
+        </div>
+        <div id="metricsPopup">
+            <p id="metricsMessage"></p>
+            <button id="metricsClose">Close</button>
+        </div>
+        <div id="aboutPopup">
+            <p id="aboutMessage">
+                <strong>About Snowman Planner Visualizer:</strong><br>
+                This project visualizes a PDDL-based snowman-building plan, developed by MSc AI and CS students at Unical for the 2025/2026 academic year. It uses Three.js for 3D rendering and Tailwind CSS for styling, allowing users to animate and interact with planning solutions in a 5x5 grid environment.
+            </p>
+            <button id="aboutClose">Close</button>
+        </div>
+        <footer>© Unical 2025/2026 MSc AI and CS student's</footer>
+    </div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // Configuration constants
+        const RADIUS = { 0: 0.15, 1: 0.25, 2: 0.35 };
+        const SUBSTEPS = 10;
+        const GOAL_POS = '2,0';
+
+        // Global state variables
+        let planData = { problem: { grid_size: 5, snow: {}, balls: {}, ball_size: {}, character: "2,1" }, frames: [], isNumeric: false };
+        let currentFrame = 0;
+        let isPlaying = false;
+        let speed = 1;
+        let snowSpeed = 0.2;
+        let scene, camera, renderer, controls, grid = {}, balls = {}, character, snowman, mixer, particles, particleVelocities = [], snowParticles = [], snowParticleVelocities = [], pathLine, spotlight;
+        const clock = new THREE.Clock();
+        let currentTime = 0;
+        let startTime = null;
+        let snowmanInstance = null; // Track the current snowman instance
+        let isGoalReached = false; // Track if goal state has been reached
+        let problemFile = null; // Track selected problem file
+        let planFile = null; // Track selected plan file
+
+        // Show/hide pop-ups
+        function showPopup(popupId, messageId, message) {
+            document.querySelectorAll('#errorPopup, #helpPopup, #metricsPopup, #aboutPopup').forEach(p => p.style.display = 'none');
+            const popup = document.getElementById(popupId);
+            const messageEl = document.getElementById(messageId);
+            messageEl.innerHTML = message; // Use innerHTML to preserve formatting
+            popup.style.display = 'block';
+        }
+
+        function hidePopup(popupId) {
+            document.getElementById(popupId).style.display = 'none';
+        }
+
+        // Parse location string (e.g., loc_3_1)
+        function parseLoc(loc) {
+            try {
+                const parts = loc.split('_');
+                if (parts.length < 3) throw new Error(`Invalid location format: ${loc}`);
+                return [parseInt(parts[1]) - 1, parseInt(parts[2]) - 1];
+            } catch (e) {
+                console.error(`Error parsing location '${loc}': ${e}`);
+                showPopup('errorPopup', 'errorMessage', `Error parsing location '${loc}': ${e.message}`);
+                throw e;
+            }
+        }
+
+        // Parse PDDL problem file
+        function parseProblem(content) {
+            try {
+                if (!content.trim()) throw new Error("Problem file is empty");
+
+                let snow = {}, balls = {}, ballSize = {}, character = null;
+                let gridPositions = new Set();
+                let domain = 'unknown';
+
+                const domainMatch = content.match(/:domain (\S+)/);
+                if (domainMatch) domain = domainMatch[1];
+
+                const locTypeRegex = /\(= \(location_type (\S+)\) (\d+)\)/g;
+                let match;
+                while ((match = locTypeRegex.exec(content)) !== null) {
+                    const loc = match[1];
+                    const t = match[2];
+                    const coord = parseLoc(loc);
+                    snow[coord.join(',')] = (t === '1');
+                    gridPositions.add(coord.join(','));
+                }
+
+                const snowRegex = /\(snow (\S+)\)/g;
+                while ((match = snowRegex.exec(content)) !== null) {
+                    const loc = match[1];
+                    const coord = parseLoc(loc);
+                    snow[coord.join(',')] = true;
+                    gridPositions.add(coord.join(','));
+                }
+
+                const ballAtRegex = /\(ball_at (\S+) (\S+)\)/g;
+                while ((match = ballAtRegex.exec(content)) !== null) {
+                    const [_, ball, loc] = match;
+                    gridPositions.add(parseLoc(loc).join(','));
+                    balls[ball] = parseLoc(loc);
+                }
+
+                const ballSizeNumRegex = /\(= \(ball_size (\S+)\) (\d+)\)/g;
+                while ((match = ballSizeNumRegex.exec(content)) !== null) {
+                    const [_, ball, size] = match;
+                    const sizeInt = parseInt(size);
+                    if (![0, 1, 2].includes(sizeInt)) throw new Error(`Invalid ball size ${size} for ball ${ball}`);
+                    ballSize[ball] = sizeInt;
+                }
+
+                const ballSizeClassicRegex = /\(ball_size_(small|medium|large) (\S+)\)/g;
+                while ((match = ballSizeClassicRegex.exec(content)) !== null) {
+                    const [_, sizeStr, ball] = match;
+                    const sizeMap = { 'small': 0, 'medium': 1, 'large': 2 };
+                    ballSize[ball] = sizeMap[sizeStr.toLowerCase()];
+                }
+
+                const charMatch = content.match(/\(character_at (\S+)\)/);
+                if (charMatch) {
+                    character = parseLoc(charMatch[1]);
+                    gridPositions.add(character.join(','));
+                }
+
+                if (Object.keys(balls).length === 0) throw new Error("No balls found in problem file");
+                if (!character) throw new Error("No character position found in problem file");
+
+                for (let ball in balls) {
+                    if (!(ball in ballSize)) ballSize[ball] = 0;
+                }
+
+                let gridSize = 5;
+                if (gridPositions.size > 0) {
+                    const coords = Array.from(gridPositions).map(c => c.split(',').map(Number));
+                    const maxR = Math.max(...coords.map(c => c[0]));
+                    const maxC = Math.max(...coords.map(c => c[1]));
+                    gridSize = Math.max(maxR, maxC) + 1;
+                }
+
+                for (let r = 0; r < gridSize; r++) {
+                    for (let c = 0; c < gridSize; c++) {
+                        if (!(r + ',' + c in snow)) snow[r + ',' + c] = false;
+                    }
+                }
+
+                return { snow, balls, ball_size: ballSize, character: character.join(','), grid_size: gridSize, domain };
+            } catch (e) {
+                console.error(`Error parsing problem file: ${e}`);
+                showPopup('errorPopup', 'errorMessage', `Error parsing problem file: ${e.message}`);
+                throw e;
+            }
+        }
+
+        // Parse plan file
+        function parsePlan(content) {
+            try {
+                if (!content.trim()) throw new Error("Plan file is empty");
+
+                const steps = [];
+                const lines = content.trim().split('\n');
+                for (let line of lines) {
+                    line = line.trim();
+                    if (!line || line.startsWith(';')) continue;
+
+                    let cleanedLine = line.replace(/^\d+\.\d+:\s*/, '').replace(/^\d+[.:]?\s*/, '');
+                    if (cleanedLine.startsWith('(') && cleanedLine.endsWith(')')) {
+                        cleanedLine = cleanedLine.slice(1, -1).trim();
+                    }
+                    if (cleanedLine && ['move', 'move_to', 'move_ball', 'push', 'roll', 'roll_ball', 'goal'].some(k => cleanedLine.toLowerCase().includes(k))) {
+                        steps.push(cleanedLine);
+                    }
+                }
+
+                if (steps.length === 0) throw new Error("No valid actions found in plan file.");
+                return steps;
+            } catch (e) {
+                console.error(`Error parsing plan file: ${e}`);
+                showPopup('errorPopup', 'errorMessage', `Error parsing plan file: ${e.message}`);
+                throw e;
+            }
+        }
+
+        // Build animation frames
+        function buildFrames(prob, plan) {
+            try {
+                const frames = [];
+                const state = {
+                    snow: { ...prob.snow },
+                    balls: Object.fromEntries(Object.entries(prob.balls).map(([k, v]) => [k, v.join(',')])),
+                    ball_size: { ...prob.ball_size },
+                    character: prob.character,
+                    grid_size: prob.grid_size,
+                    isNumeric: prob.domain.includes('snowman_numeric')
+                };
+
+                frames.push({
+                    type: 'initial',
+                    balls: { ...state.balls },
+                    ball_size: { ...state.ball_size },
+                    snow: { ...state.snow },
+                    character: state.character,
+                    grid_size: state.grid_size,
+                    time: 0,
+                    alpha: 0
+                });
+
+                let step_count = 0;
+                for (let action of plan) {
+                    const parts = action.split(/\s+/);
+                    try {
+                        if (['move', 'move_to'].includes(parts[0])) {
+                            if (parts.length < 3) throw new Error(`Invalid move action: ${action}`);
+                            const start = parseLoc(parts[1]);
+                            const end = parseLoc(parts[2]);
+                            const direction = parts.length > 3 ? parts[3] : null;
+
+                            for (let t = 0; t < SUBSTEPS; t++) {
+                                const alpha = t / (SUBSTEPS - 1);
+                                frames.push({
+                                    type: 'move',
+                                    start: start.join(','),
+                                    end: end.join(','),
+                                    alpha,
+                                    balls: { ...state.balls },
+                                    ball_size: { ...state.ball_size },
+                                    snow: { ...state.snow },
+                                    character: state.character,
+                                    grid_size: state.grid_size,
+                                    time: step_count + alpha,
+                                    direction
+                                });
+                            }
+                            state.character = end.join(',');
+                        } else if (['move_ball', 'push', 'roll', 'roll_ball'].includes(parts[0])) {
+                            if (parts.length < 5) throw new Error(`Invalid move_ball action: ${action}`);
+                            const [_, ball, fromCell, midCell, toCell] = parts;
+                            const start = parseLoc(fromCell);
+                            const end = parseLoc(toCell);
+                            const direction = parts.length > 5 ? parts[5] : null;
+
+                            const charStart = state.character;
+                            for (let t = 0; t < SUBSTEPS; t++) {
+                                const alpha = t / (SUBSTEPS - 1);
+                                frames.push({
+                                    type: 'move_to_ball',
+                                    start: charStart,
+                                    end: start.join(','),
+                                    alpha,
+                                    balls: { ...state.balls },
+                                    ball_size: { ...state.ball_size },
+                                    snow: { ...state.snow },
+                                    character: state.character,
+                                    grid_size: state.grid_size,
+                                    time: step_count + alpha,
+                                    direction
+                                });
+                            }
+                            state.character = start.join(',');
+
+                            for (let t = 0; t < SUBSTEPS; t++) {
+                                const alpha = t / (SUBSTEPS - 1);
+                                frames.push({
+                                    type: 'move_ball',
+                                    ball,
+                                    start: start.join(','),
+                                    end: end.join(','),
+                                    alpha,
+                                    balls: { ...state.balls },
+                                    ball_size: { ...state.ball_size },
+                                    snow: { ...state.snow },
+                                    character: state.character,
+                                    grid_size: state.grid_size,
+                                    time: step_count + alpha,
+                                    direction
+                                });
+                            }
+                            state.balls[ball] = end.join(',');
+                            if (state.snow[end.join(',')] && (state.isNumeric || !state.isNumeric)) {
+                                state.ball_size[ball] = Math.min(state.ball_size[ball] + 1, 2);
+                                state.snow[end.join(',')] = false;
+                            }
+                        } else if (parts[0] === 'goal') {
+                            const ballsAtGoal = Object.entries(state.balls).filter(([_, pos]) => pos === GOAL_POS).map(([b]) => b);
+                            console.log(`Processing goal action at step ${step_count + 1}, balls at ${GOAL_POS}: ${ballsAtGoal.length}`);
+                            if (ballsAtGoal.length >= 3) {
+                                const ballSizes = ballsAtGoal.map(b => [b, state.ball_size[b]]);
+                                ballSizes.sort((a, b) => b[1] - a[1]);
+                                ballsAtGoal.forEach((ball, idx) => {
+                                    state.balls[ball] = GOAL_POS;
+                                    state.ball_size[ball] = 2 - idx; // Large (2), Medium (1), Small (0)
+                                });
+                            }
+                            for (let t = 0; t < SUBSTEPS; t++) {
+                                const alpha = t / (SUBSTEPS - 1);
+                                frames.push({
+                                    type: 'goal',
+                                    balls: { ...state.balls },
+                                    ball_size: { ...state.ball_size },
+                                    snow: { ...state.snow },
+                                    character: state.character,
+                                    grid_size: state.grid_size,
+                                    time: step_count + alpha,
+                                    alpha
+                                });
+                            }
+                        } else {
+                            console.warn(`Unknown action '${action}' on step ${step_count + 1}`);
+                            for (let t = 0; t < SUBSTEPS; t++) {
+                                const alpha = t / (SUBSTEPS - 1);
+                                frames.push({
+                                    type: 'static',
+                                    balls: { ...state.balls },
+                                    ball_size: { ...state.ball_size },
+                                    snow: { ...state.snow },
+                                    character: state.character,
+                                    grid_size: state.grid_size,
+                                    time: step_count + alpha,
+                                    alpha
+                                });
+                            }
+                        }
+                        step_count++;
+                    } catch (e) {
+                        console.error(`Error processing action '${action}' on step ${step_count + 1}: ${e}`);
+                        showPopup('errorPopup', 'errorMessage', `Error processing action '${action}' on step ${step_count + 1}: ${e.message}`);
+                        for (let t = 0; t < SUBSTEPS; t++) {
+                            const alpha = t / (SUBSTEPS - 1);
+                            frames.push({
+                                type: 'error',
+                                balls: { ...state.balls },
+                                ball_size: { ...state.ball_size },
+                                snow: { ...state.snow },
+                                character: state.character,
+                                grid_size: state.grid_size,
+                                time: step_count + alpha,
+                                alpha
+                            });
+                        }
+                        step_count++;
+                    }
+                }
+                console.log(`Total frames generated: ${frames.length}, isNumeric: ${state.isNumeric}`);
+                return frames;
+            } catch (e) {
+                console.error(`Error building frames: ${e}`);
+                showPopup('errorPopup', 'errorMessage', `Error building frames: ${e.message}`);
+                throw e;
+            }
+        }
+
+        // File selection
+        async function selectFiles(e) {
+            const problemInput = document.getElementById('problemFile');
+            const planInput = document.getElementById('planFile');
+            const changedInput = e.target.id; // Identify which input triggered the event
+
+            console.log(`File input changed: ${changedInput}`);
+
+            // Update global file references
+            if (changedInput === 'problemFile' && problemInput.files[0]) {
+                if (!problemInput.files[0].name.endsWith('.pddl')) {
+                    console.error('Invalid problem file selected');
+                    showPopup('errorPopup', 'errorMessage', 'Please select a valid problem file (.pddl).');
+                    problemInput.value = ''; // Clear invalid file
+                    problemFile = null;
+                    return;
+                }
+                problemFile = problemInput.files[0];
+                console.log(`Problem file selected: ${problemFile.name}`);
+            } else if (changedInput === 'planFile' && planInput.files[0]) {
+                if (!planInput.files[0].name.endsWith('.txt') && !planInput.files[0].name.endsWith('.plan')) {
+                    console.error('Invalid plan file selected');
+                    showPopup('errorPopup', 'errorMessage', 'Please select a valid plan file (.txt or .plan).');
+                    planInput.value = ''; // Clear invalid file
+                    planFile = null;
+                    return;
+                }
+                planFile = planInput.files[0];
+                console.log(`Plan file selected: ${planFile.name}`);
+            }
+
+            // Only attempt to load files if both are selected
+            if (problemFile && planFile) {
+                console.log('Both files selected, attempting to load');
+                try {
+                    // Reset scene to clear any existing state
+                    resetScene(false); // Pass false to avoid resetting file inputs
+                    const [problemContent, planContent] = await Promise.all([
+                        readFile(problemFile),
+                        readFile(planFile)
+                    ]);
+                    await loadFiles(problemContent, planContent, problemFile.name, planFile.name);
+                    console.log('Files loaded successfully, rendering initial frame');
+                    // Force render the first frame
+                    if (planData.frames.length > 0) {
+                        updateFrame(planData.frames[0]);
+                        renderer.render(scene, camera);
+                    }
+                } catch (err) {
+                    console.error(`Error reading files: ${err.message}`);
+                    showPopup('errorPopup', 'errorMessage', `Error reading files: ${err.message}`);
+                    resetScene(false); // Reset without clearing files
+                }
+            } else {
+                console.log('Waiting for both files to be selected');
+                // Disable controls until both files are loaded
+                ['playPause', 'stepForward', 'stepBackward', 'reset', 'step'].forEach(id => {
+                    document.getElementById(id).disabled = true;
+                });
+            }
+        }
+
+        function readFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+                reader.readAsText(file);
+            });
+        }
+
+        async function loadFiles(problemContent, planContent, problemFileName, planFileName) {
+            try {
+                console.log(`Loading files: ${problemFileName}, ${planFileName}`);
+                startTime = performance.now();
+                const problem = parseProblem(problemContent);
+                const plan = parsePlan(planContent);
+                planData = {
+                    problem,
+                    frames: buildFrames(problem, plan),
+                    isNumeric: problem.domain.includes('snowman_numeric')
+                };
+                currentFrame = 0;
+                isPlaying = false;
+                currentTime = 0;
+                isGoalReached = false; // Reset goal state
+                document.getElementById('step').max = Math.max(0, Math.floor(planData.frames.length / SUBSTEPS) - 1);
+                document.getElementById('step').value = 0;
+                document.getElementById('step').disabled = false;
+                ['playPause', 'stepForward', 'stepBackward', 'reset'].forEach(id => document.getElementById(id).disabled = false);
+                document.getElementById('playPause').textContent = 'Play';
+                console.log('Initializing scene objects');
+                await initSceneObjects();
+                console.log(`Scene initialized, frames: ${planData.frames.length}`);
+                if (planData.frames.length > 0) {
+                    console.log('Rendering first frame');
+                    updateFrame(planData.frames[0]);
+                    renderer.render(scene, camera); // Force render
+                }
+            } catch (err) {
+                console.error('Error loading plan:', err);
+                showPopup('errorPopup', 'errorMessage', `Error loading plan: ${err.message}`);
+                resetScene(false); // Reset without clearing files
+            }
+        }
+
+        async function initSceneObjects() {
+            try {
+                const { problem } = planData;
+                console.log('Initializing scene objects');
+
+                // Clear existing balls and snowman from the scene
+                Object.values(balls).forEach(ball => {
+                    if (ball.geometry) ball.geometry.dispose();
+                    if (ball.material) ball.material.dispose();
+                    scene.remove(ball);
+                });
+                balls = {};
+
+                if (snowmanInstance) {
+                    if (snowmanInstance.geometry) snowmanInstance.geometry.dispose();
+                    if (snowmanInstance.material) snowmanInstance.material.dispose();
+                    scene.remove(snowmanInstance);
+                    snowmanInstance = null;
+                }
+                if (snowman) {
+                    if (snowman.geometry) snowman.geometry.dispose();
+                    if (snowman.material) snowman.material.dispose();
+                    scene.remove(snowman);
+                    snowman = null;
+                }
+
+                const groundGeometry = new THREE.PlaneGeometry(7, 7);
+                const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xE0FFFF, roughness: 0.8, metalness: 0.1 });
+                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.rotation.x = -Math.PI / 2;
+                ground.position.set(2.5, -0.01, 2.5);
+                ground.receiveShadow = true;
+                scene.add(ground);
+                console.log('Ground added');
+
+                for (let x = 0; x < problem.grid_size; x++) {
+                    for (let y = 0; y < problem.grid_size; y++) {
+                        const coord = `${x},${y}`;
+                        const geometry = new THREE.PlaneGeometry(1, 1);
+                        const material = new THREE.MeshStandardMaterial({ color: problem.snow[coord] ? 0xE0FFFF : 0x90EE90, side: THREE.DoubleSide });
+                        const plane = new THREE.Mesh(geometry, material);
+                        plane.rotation.x = -Math.PI / 2;
+                        plane.position.set(x + 0.5, 0, y + 0.5);
+                        plane.receiveShadow = true;
+                        scene.add(plane);
+                        grid[coord] = plane;
+                    }
+                }
+                console.log('Grid planes added');
+
+                const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xADD8E6, transparent: true, opacity: 0.7, roughness: 0.3, metalness: 0.5 });
+                const wallHeight = 0.5;
+                const wallThickness = 0.2;
+                [
+                    { geometry: new THREE.BoxGeometry(7, wallHeight, wallThickness), position: [2.5, wallHeight / 2, -0.1] },
+                    { geometry: new THREE.BoxGeometry(7, wallHeight, wallThickness), position: [2.5, wallHeight / 2, 5.1] },
+                    { geometry: new THREE.BoxGeometry(wallThickness, wallHeight, 5), position: [-0.1, wallHeight / 2, 2.5] },
+                    { geometry: new THREE.BoxGeometry(wallThickness, wallHeight, 5), position: [5.1, wallHeight / 2, 2.5] }
+                ].forEach(({ geometry, position }) => {
+                    const wall = new THREE.Mesh(geometry, wallMaterial);
+                    wall.position.set(...position);
+                    wall.castShadow = true;
+                    wall.receiveShadow = true;
+                    scene.add(wall);
+                });
+                console.log('Walls added');
+
+                const treeGeometry = new THREE.ConeGeometry(0.3, 0.8, 8);
+                const treeMaterial = new THREE.MeshStandardMaterial({ color: 0xE0FFFF, roughness: 0.9 });
+                const treePositions = [[-1, 0, -1], [6, 0, -1], [-1, 0, 6], [6, 0, 6], [2.5, 0, -1], [2.5, 0, 6], [-1, 0, 2.5], [6, 0, 2.5]];
+                treePositions.forEach(pos => {
+                    const tree = new THREE.Mesh(treeGeometry, treeMaterial);
+                    tree.position.set(pos[0], pos[1] + 0.4, pos[2]);
+                    tree.castShadow = true;
+                    tree.receiveShadow = true;
+                    scene.add(tree);
+                });
+                console.log('Trees added');
+
+                if (planData.frames.length > 0) {
+                    for (let b in problem.balls) {
+                        if (!balls[b]) {
+                            const geometry = new THREE.SphereGeometry(RADIUS[problem.ball_size[b]], 32, 32);
+                            const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.2 });
+                            const sphere = new THREE.Mesh(geometry, material);
+                            sphere.castShadow = true;
+                            sphere.receiveShadow = true;
+                            const [x, y] = problem.balls[b];
+                            sphere.position.set(x + 0.5, RADIUS[problem.ball_size[b]], y + 0.5);
+                            sphere.name = `ball_${b}`; // Assign unique name for tracking
+                            scene.add(sphere);
+                            balls[b] = sphere;
+                            console.log(`Ball ${b} added at position (${x + 0.5}, ${RADIUS[problem.ball_size[b]]}, ${y + 0.5})`);
+                        }
+                    }
+
+                    if (character) {
+                        if (character.geometry) character.geometry.dispose();
+                        if (character.material) character.material.dispose();
+                        scene.remove(character);
+                    }
+                    const loader = new GLTFLoader();
+                    try {
+                        const gltf = await new Promise((resolve, reject) => loader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Soldier.glb', resolve, undefined, reject));
+                        character = gltf.scene;
+                        character.scale.set(0.4, 0.4, 0.4);
+                        character.castShadow = true;
+                        character.receiveShadow = true;
+                        character.name = 'character';
+                        if (gltf.animations.length > 0) {
+                            mixer = new THREE.AnimationMixer(character);
+                            gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+                        }
+                        console.log('Character loaded');
+                    } catch (e) {
+                        console.warn('Failed to load character model, using fallback');
+                        character = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.5, 32), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
+                        character.castShadow = true;
+                        character.name = 'character';
+                    }
+                    scene.add(character);
+                    const [cx, cy] = problem.character.split(',').map(Number);
+                    character.position.set(cx + 0.5, 0, cy + 0.5);
+                    console.log(`Character positioned at (${cx + 0.5}, 0, ${cy + 0.5})`);
+
+                    if (snowman) {
+                        if (snowman.geometry) snowman.geometry.dispose();
+                        if (snowman.material) snowman.material.dispose();
+                        scene.remove(snowman);
+                        snowman = null;
+                    }
+                    try {
+                        const gltf = await new Promise((resolve, reject) => loader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Soldier.glb', resolve, undefined, reject));
+                        snowman = gltf.scene.clone();
+                        snowman.scale.set(0.3, 0.3, 0.3);
+                        snowman.castShadow = true;
+                        snowman.receiveShadow = true;
+                        snowman.name = 'snowman_template'; // Template for cloning
+                        console.log('Snowman template loaded');
+                    } catch (e) {
+                        console.warn('Failed to load snowman model, using fallback');
+                        snowman = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), new THREE.MeshStandardMaterial({ color: 0xFFD700 }));
+                        snowman.castShadow = true;
+                        snowman.name = 'snowman_template';
+                    }
+                }
+
+                spotlight = new THREE.SpotLight(0xffffff, 0, 5, Math.PI / 4, 0.5, 2);
+                spotlight.position.set(2.5, 3, 2.5);
+                spotlight.castShadow = true;
+                scene.add(spotlight);
+                scene.add(spotlight.target);
+                console.log('Spotlight added');
+            } catch (err) {
+                console.error('Error initializing scene objects:', err);
+                showPopup('errorPopup', 'errorMessage', `Error initializing scene: ${err.message}`);
+            }
+        }
+
+        async function init() {
+            try {
+                scene = new THREE.Scene();
+                camera = new THREE.PerspectiveCamera(75, 0.65 * window.innerWidth / window.innerHeight, 0.1, 1000);
+                renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+                renderer.setSize(window.innerWidth * 0.65, window.innerHeight - 70);
+                renderer.shadowMap.enabled = true;
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+                scene.fog = new THREE.Fog(0x87CEEB, 3, 10);
+
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+                scene.add(ambientLight);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+                directionalLight.position.set(5, 10, 5);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                scene.add(directionalLight);
+
+                const skyboxLoader = new THREE.CubeTextureLoader();
+                skyboxLoader.load([
+                    'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/cube/MilkyWay/dark-s_px.jpg',
+                    'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/cube/MilkyWay/dark-s_nx.jpg',
+                    'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/cube/MilkyWay/dark-s_py.jpg',
+                    'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/cube/MilkyWay/dark-s_ny.jpg',
+                    'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/cube/MilkyWay/dark-s_pz.jpg',
+                    'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/cube/MilkyWay/dark-s_nz.jpg'
+                ], texture => { scene.background = texture; }, undefined, () => { scene.background = new THREE.Color(0x87CEEB); });
+
+                controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.minDistance = 2;
+                controls.maxDistance = 10;
+
+                const particleGeometry = new THREE.BufferGeometry();
+                const particleCount = 2000;
+                const particlePositions = new Float32Array(particleCount * 3);
+                const particleMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.015, transparent: true, opacity: 0.9 });
+                for (let i = 0; i < particleCount; i++) {
+                    particlePositions[i * 3] = 0;
+                    particlePositions[i * 3 + 1] = 0;
+                    particlePositions[i * 3 + 2] = 0;
+                    particleVelocities.push(new THREE.Vector3((Math.random() - 0.5) * 0.25 + 0.05, Math.random() * 0.35, (Math.random() - 0.5) * 0.25));
+                }
+                particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+                particles = new THREE.Points(particleGeometry, particleMaterial);
+                scene.add(particles);
+                particles.visible = false;
+
+                const snowParticleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+                function dropSnowflake() {
+                    const size = 0.009 + Math.random() * 0.012;
+                    const geometry = new THREE.CircleGeometry(size, 32);
+                    const mesh = new THREE.Mesh(geometry, snowParticleMaterial);
+                    mesh.position.set(Math.random() * 7 - 1, Math.random() * 5 + 3, Math.random() * 7 - 1);
+                    const velocity = new THREE.Vector3((Math.random() - 0.5) * 0.05 + 0.02 * Math.sin(clock.getElapsedTime()), -snowSpeed, (Math.random() - 0.5) * 0.05 + 0.02 * Math.cos(clock.getElapsedTime()));
+                    snowParticles.push(mesh);
+                    snowParticleVelocities.push(velocity);
+                    scene.add(mesh);
+                }
+                setInterval(dropSnowflake, 300);
+
+                const pathGeometry = new THREE.BufferGeometry();
+                const pathMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 });
+                pathLine = new THREE.Line(pathGeometry, pathMaterial);
+                scene.add(pathLine);
+
+                camera.position.set(planData.problem.grid_size / 2, 3, planData.problem.grid_size);
+                controls.target.set(planData.problem.grid_size / 2, 0, planData.problem.grid_size / 2);
+
+                await initSceneObjects();
+                console.log('Initial scene setup complete');
+                animate();
+            } catch (err) {
+                console.error('Initialization error:', err);
+                showPopup('errorPopup', 'errorMessage', `Initialization error: ${err.message}`);
+            }
+        }
+
+        function updateFrame(f) {
+            try {
+                if (!f) return;
+
+                // Clean up all snowman instances
+                scene.traverse(object => {
+                    if (object.name === 'snowman') {
+                        console.log(`Removing snowman instance: ${object.uuid} at frame ${Math.floor(currentFrame)}`);
+                        if (object.geometry) object.geometry.dispose();
+                        if (object.material) object.material.dispose();
+                        scene.remove(object);
+                    }
+                });
+                snowmanInstance = null;
+
+                // Clean up balls not in the current frame
+                const currentBalls = new Set(Object.keys(f.balls));
+                Object.keys(balls).forEach(b => {
+                    if (!currentBalls.has(b)) {
+                        console.log(`Removing unused ball: ${b} at frame ${Math.floor(currentFrame)}`);
+                        if (balls[b].geometry) balls[b].geometry.dispose();
+                        if (balls[b].material) balls[b].material.dispose();
+                        scene.remove(balls[b]);
+                        delete balls[b];
+                    }
+                });
+
+                for (let coord in f.snow) {
+                    if (grid[coord]) {
+                        grid[coord].material.color.set(f.snow[coord] ? 0xE0FFFF : 0x90EE90);
+                        grid[coord].material.needsUpdate = true;
+                    }
+                }
+
+                for (let b in f.balls) {
+                    if (!balls[b]) {
+                        const geometry = new THREE.SphereGeometry(RADIUS[f.ball_size[b]], 32, 32);
+                        const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.2 });
+                        balls[b] = new THREE.Mesh(geometry, material);
+                        balls[b].castShadow = true;
+                        balls[b].receiveShadow = true;
+                        balls[b].name = `ball_${b}`;
+                        scene.add(balls[b]);
+                        console.log(`Created new ball: ${b} at frame ${Math.floor(currentFrame)}`);
+                    } else {
+                        // Update existing ball geometry if size changed
+                        if (balls[b].geometry.parameters.radius !== RADIUS[f.ball_size[b]]) {
+                            balls[b].geometry.dispose();
+                            balls[b].geometry = new THREE.SphereGeometry(RADIUS[f.ball_size[b]], 32, 32);
+                            console.log(`Updated geometry for ball: ${b} to size ${f.ball_size[b]} at frame ${Math.floor(currentFrame)}`);
+                        }
+                    }
+                    let posX, posY, posZ;
+                    if (f.type === 'goal' && f.balls[b] === GOAL_POS) {
+                        posX = 2.5;
+                        posZ = 0.5;
+                        if (f.ball_size[b] === 2) {
+                            posY = 0.35; // Large at bottom
+                            console.log(`Positioning large ball ${b} at y=${posY}, radius=${RADIUS[f.ball_size[b]]}`);
+                        } else if (f.ball_size[b] === 1) {
+                            posY = 0.35 + 0.35 + 0.25; // Medium: large center + large radius + medium radius
+                            console.log(`Positioning medium ball ${b} at y=${posY}, radius=${RADIUS[f.ball_size[b]]}`);
+                        } else {
+                            posY = 0.35 + 0.35 + 0.25 + 0.25 + 0.15; // Small: medium center + medium radius + small radius
+                            console.log(`Positioning small ball ${b} at y=${posY}, radius=${RADIUS[f.ball_size[b]]}`);
+                        }
+                    } else if (['move_ball', 'push', 'roll', 'roll_ball'].includes(f.type) && f.ball === b) {
+                        const [sx, sy] = f.start.split(',').map(Number);
+                        const [ex, ey] = f.end.split(',').map(Number);
+                        posX = sx + 0.5 + f.alpha * (ex - sx);
+                        posZ = sy + 0.5 + f.alpha * (ey - sy);
+                        posY = RADIUS[f.ball_size[b]];
+                    } else {
+                        const [x, y] = f.balls[b].split(',').map(Number);
+                        posX = x + 0.5;
+                        posZ = y + 0.5;
+                        posY = RADIUS[f.ball_size[b]];
+                    }
+                    balls[b].position.set(posX, posY, posZ);
+                }
+
+                if (character && f.character) {
+                    let cx, cz, rotationY = 0;
+                    if (f.type === 'move_to_ball') {
+                        const [sx, sy] = f.start.split(',').map(Number);
+                        const [ex, ey] = f.end.split(',').map(Number);
+                        cx = sx + 0.5 + f.alpha * (ex - sx);
+                        cz = sy + 0.5 + f.alpha * (ey - sy);
+                        rotationY = f.direction === 'left' ? Math.PI : f.direction === 'right' ? 0 : f.direction === 'up' ? Math.PI / 2 : f.direction === 'down' ? -Math.PI / 2 : 0;
+                        spotlight.position.set(cx, 2, cz);
+                        spotlight.target.position.set(cx, 0, cz);
+                    } else if (['move_ball', 'push', 'roll', 'roll_ball'].includes(f.type)) {
+                        const [bx, by] = f.start.split(',').map(Number);
+                        const [ex, ey] = f.end.split(',').map(Number);
+                        cx = bx + 0.5 + f.alpha * (ex - bx);
+                        cz = by + 0.5 + f.alpha * (ey - by);
+                        rotationY = f.direction === 'left' ? Math.PI : f.direction === 'right' ? 0 : f.direction === 'up' ? Math.PI / 2 : f.direction === 'down' ? -Math.PI / 2 : 0;
+                        spotlight.position.set(cx, 2, cz);
+                        spotlight.target.position.set(balls[f.ball].position.x, balls[f.ball].position.y, balls[f.ball].position.z);
+                    } else if (f.type === 'move') {
+                        const [sx, sy] = f.start.split(',').map(Number);
+                        const [ex, ey] = f.end.split(',').map(Number);
+                        cx = sx + 0.5 + f.alpha * (ex - sx);
+                        cz = sy + 0.5 + f.alpha * (ey - sy);
+                        rotationY = f.direction === 'left' ? Math.PI : f.direction === 'right' ? 0 : f.direction === 'up' ? Math.PI / 2 : f.direction === 'down' ? -Math.PI / 2 : 0;
+                        spotlight.position.set(cx, 2, cz);
+                        spotlight.target.position.set(cx, 0, cz);
+                    } else {
+                        const [x, y] = f.character.split(',').map(Number);
+                        cx = x + 0.5;
+                        cz = y + 0.5;
+                        spotlight.position.set(cx, 2, cz);
+                        spotlight.target.position.set(cx, 0, cz);
+                    }
+                    character.position.set(cx, 0, cz);
+                    character.rotation.y = rotationY;
+                }
+
+                // Handle snowman for goal state
+                const ballsAtGoal = Object.values(f.balls).filter(pos => pos === GOAL_POS).length;
+                console.log(`Frame ${Math.floor(currentFrame)}: type=${f.type}, balls at ${GOAL_POS}=${ballsAtGoal}, isNumeric=${planData.isNumeric}, isGoalReached=${isGoalReached}, alpha=${f.alpha}`);
+                if (f.type === 'goal' && ballsAtGoal >= 3 && !isGoalReached && f.alpha === 0) {
+                    console.log(`Adding snowman at goal state, frame ${Math.floor(currentFrame)}`);
+                    snowmanInstance = snowman.clone();
+                    snowmanInstance.position.set(2.5, 0, 0.5); // Align at base of stack
+                    snowmanInstance.rotation.y = Math.PI / 4;
+                    snowmanInstance.scale.set(0.6, 0.6, 0.6); // Scale to encompass stacked balls
+                    snowmanInstance.name = 'snowman';
+                    scene.add(snowmanInstance);
+                    isGoalReached = true;
+                    console.log(`Snowman added: ${snowmanInstance.uuid}`);
+                } else if (currentFrame < planData.frames.length - 1 && planData.frames[Math.floor(currentFrame + SUBSTEPS)]?.type !== 'goal') {
+                    if (isGoalReached) {
+                        console.log(`Resetting isGoalReached at frame ${Math.floor(currentFrame)}: next frame type=${planData.frames[Math.floor(currentFrame + SUBSTEPS)]?.type}`);
+                        isGoalReached = false;
+                    }
+                }
+            } catch (err) {
+                console.error('Error updating frame:', err);
+                showPopup('errorPopup', 'errorMessage', `Error updating frame: ${err.message}`);
+            }
+        }
+
+        function resetScene(clearFiles = true) {
+            try {
+                console.log('Resetting scene');
+                planData = {
+                    problem: {
+                        grid_size: 5,
+                        snow: Object.fromEntries(Array(5).fill().flatMap((_, x) => Array(5).fill().map((_, y) => [[x, y].join(','), x === 0 || x === 4]))),
+                        balls: { ball_0: [1, 2], ball_1: [2, 2], ball_2: [3, 2] },
+                        ball_size: { ball_0: 2, ball_1: 1, ball_2: 0 },
+                        character: '2,1'
+                    },
+                    frames: [],
+                    isNumeric: false
+                };
+                currentFrame = 0;
+                isPlaying = false;
+                currentTime = 0;
+                startTime = null;
+                isGoalReached = false;
+                if (clearFiles) {
+                    problemFile = null;
+                    planFile = null;
+                    document.getElementById('problemFile').value = '';
+                    document.getElementById('planFile').value = '';
+                }
+                document.getElementById('playPause').textContent = 'Play';
+                document.getElementById('step').value = 0;
+                document.getElementById('step').max = 0;
+                document.getElementById('step').disabled = true;
+                ['playPause', 'stepForward', 'stepBackward', 'reset'].forEach(id => document.getElementById(id).disabled = true);
+
+                // Dispose of all scene objects
+                scene.traverse(object => {
+                    if (object.geometry) object.geometry.dispose();
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(mat => mat.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
+                    }
+                });
+                scene.clear();
+                grid = {};
+                balls = {};
+                if (character) {
+                    if (character.geometry) character.geometry.dispose();
+                    if (character.material) character.material.dispose();
+                    character = null;
+                }
+                if (snowman) {
+                    if (snowman.geometry) snowman.geometry.dispose();
+                    if (snowman.material) snowman.material.dispose();
+                    snowman = null;
+                }
+                snowmanInstance = null;
+                if (particles) {
+                    if (particles.geometry) particles.geometry.dispose();
+                    if (particles.material) particles.material.dispose();
+                    scene.remove(particles);
+                    particles = null;
+                }
+                snowParticles.forEach(p => {
+                    if (p.geometry) p.geometry.dispose();
+                    if (p.material) p.material.dispose();
+                    scene.remove(p);
+                });
+                snowParticles = [];
+                snowParticleVelocities = [];
+                if (pathLine) {
+                    if (pathLine.geometry) pathLine.geometry.dispose();
+                    if (pathLine.material) pathLine.material.dispose();
+                    scene.remove(pathLine);
+                    pathLine = null;
+                }
+                if (spotlight) {
+                    scene.remove(spotlight);
+                    scene.remove(spotlight.target);
+                    spotlight = null;
+                }
+                if (mixer) {
+                    mixer.stopAllAction();
+                    mixer = null;
+                }
+
+                renderer.dispose();
+                renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+                renderer.setSize(window.innerWidth * 0.65, window.innerHeight - 70);
+                renderer.shadowMap.enabled = true;
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                camera = new THREE.PerspectiveCamera(75, 0.65 * window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.set(2.5, 3, 5);
+                controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.minDistance = 2;
+                controls.maxDistance = 10;
+                controls.target.set(2.5, 0, 2.5);
+                init();
+            } catch (err) {
+                console.error('Error resetting scene:', err);
+                showPopup('errorPopup', 'errorMessage', `Error resetting scene: ${err.message}`);
+            }
+        }
+
+        function getMetrics() {
+            const totalSteps = Math.floor(planData.frames.length / SUBSTEPS);
+            const planDuration = currentTime.toFixed(2);
+            const ballsAtGoal = planData.frames.length > 0 ? Object.values(planData.frames[planData.frames.length - 1].balls).filter(pos => pos === GOAL_POS).length : 0;
+            return `
+                <strong>Plan Metrics:</strong><br>
+                Total Steps: ${totalSteps}<br>
+                Plan Duration: ${planDuration} seconds<br>
+                Balls at Goal: ${ballsAtGoal}
+            `;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            controls.update();
+
+            if (isPlaying && planData.frames.length > 0 && currentFrame < planData.frames.length - 1) {
+                updateFrame(planData.frames[Math.floor(currentFrame)]);
+                currentFrame += speed;
+                document.getElementById('step').value = Math.floor(currentFrame / SUBSTEPS);
+                currentTime = startTime ? (performance.now() - startTime) / 1000 : 0;
+                if (currentFrame >= planData.frames.length - 1) {
+                    isPlaying = false;
+                    document.getElementById('playPause').textContent = 'Play';
+                }
+            }
+
+            snowParticles.forEach((mesh, i) => {
+                const velocity = snowParticleVelocities[i];
+                mesh.position.x += velocity.x * delta;
+                mesh.position.y += velocity.y * delta * snowSpeed;
+                mesh.position.z += velocity.z * delta;
+                if (mesh.position.y < 0) {
+                    scene.remove(mesh);
+                    snowParticles.splice(i, 1);
+                    snowParticleVelocities.splice(i, 1);
+                }
+            });
+
+            if (mixer && isPlaying && ['move', 'move_to_ball', 'move_ball', 'push', 'roll', 'roll_ball'].includes(planData.frames[Math.floor(currentFrame)]?.type)) {
+                mixer.update(delta);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        const controlPanel = document.getElementById('controlPanel');
+        let isDragging = false, currentX, currentY, isResizing = false, startX, startY, startWidth, startHeight;
+        controlPanel.addEventListener('mousedown', e => {
+            if (e.target.id === 'minimizeBtn') return;
+            if (e.target.id === 'resizeHandle') {
+                isResizing = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startWidth = parseInt(document.defaultView.getComputedStyle(controlPanel).width, 10);
+                startHeight = parseInt(document.defaultView.getComputedStyle(controlPanel).height, 10);
+                controlPanel.style.cursor = 'se-resize';
+            } else {
+                isDragging = true;
+                currentX = e.clientX - parseFloat(controlPanel.style.left || 0);
+                currentY = e.clientY - parseFloat(controlPanel.style.top || 0);
+                controlPanel.style.cursor = 'grabbing';
+            }
+        });
+        document.addEventListener('mousemove', e => {
+            if (isDragging) {
+                let newLeft = e.clientX - currentX;
+                let newTop = e.clientY - currentY;
+                newLeft = Math.max(0, Math.min(newLeft, window.innerWidth * 0.35 - controlPanel.offsetWidth));
+                newTop = Math.max(40, Math.min(newTop, window.innerHeight * 0.5 - controlPanel.offsetHeight));
+                controlPanel.style.left = `${newLeft}px`;
+                controlPanel.style.top = `${newTop}px`;
+                controlPanel.style.transform = 'none';
+            } else if (isResizing) {
+                const width = startWidth + (e.clientX - startX);
+                const height = startHeight + (e.clientY - startY);
+                controlPanel.style.width = `${Math.max(200, Math.min(400, width))}px`;
+                controlPanel.style.height = `${Math.max(150, Math.min(600, height))}px`;
+            }
+        });
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            isResizing = false;
+            controlPanel.style.cursor = 'move';
+        });
+
+        document.getElementById('minimizeBtn').addEventListener('click', () => {
+            controlPanel.classList.toggle('minimized');
+            if (controlPanel.classList.contains('minimized')) {
+                document.getElementById('minimizeBtn').textContent = '+';
+                document.getElementById('problemFile').style.display = 'none';
+                document.getElementById('planFile').style.display = 'none';
+                document.querySelectorAll('#controlPanel button, #controlPanel label, #controlPanel input[type="range"]').forEach(el => el.style.display = 'none');
+                document.getElementById('resizeHandle').style.display = 'none';
+            } else {
+                document.getElementById('minimizeBtn').textContent = '-';
+                document.getElementById('problemFile').style.display = 'block';
+                document.getElementById('planFile').style.display = 'block';
+                document.querySelectorAll('#controlPanel button, #controlPanel label, #controlPanel input[type="range"]').forEach(el => el.style.display = 'block');
+                document.getElementById('resizeHandle').style.display = 'block';
+            }
+        });
+
+        document.getElementById('menuBtn').addEventListener('click', () => {
+            const menu = document.getElementById('menuDropdown');
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        });
+        document.getElementById('helpBtn').addEventListener('click', () => {
+            showPopup('helpPopup', 'helpMessage', document.getElementById('helpMessage').innerHTML);
+            document.getElementById('menuDropdown').style.display = 'none';
+        });
+        document.getElementById('metricsBtn').addEventListener('click', () => {
+            showPopup('metricsPopup', 'metricsMessage', getMetrics());
+            document.getElementById('menuDropdown').style.display = 'none';
+        });
+        document.getElementById('aboutBtn').addEventListener('click', () => {
+            showPopup('aboutPopup', 'aboutMessage', document.getElementById('aboutMessage').innerHTML);
+            document.getElementById('menuDropdown').style.display = 'none';
+        });
+        document.getElementById('errorClose').addEventListener('click', () => hidePopup('errorPopup'));
+        document.getElementById('helpClose').addEventListener('click', () => hidePopup('helpPopup'));
+        document.getElementById('metricsClose').addEventListener('click', () => hidePopup('metricsPopup'));
+        document.getElementById('aboutClose').addEventListener('click', () => hidePopup('aboutPopup'));
+        document.getElementById('problemFile').addEventListener('change', selectFiles);
+        document.getElementById('planFile').addEventListener('change', selectFiles); // Fixed from 'click' to 'change'
+        document.getElementById('playPause').addEventListener('click', () => {
+            if (planData.frames.length === 0) {
+                showPopup('errorPopup', 'errorMessage', 'Please select both a problem file (.pddl) and a plan file (.txt or .plan) to start the animation.');
+                return;
+            }
+            isPlaying = !isPlaying;
+            document.getElementById('playPause').textContent = isPlaying ? 'Pause' : 'Play';
+            if (isPlaying && !startTime) startTime = performance.now();
+        });
+        document.getElementById('stepForward').addEventListener('click', () => {
+            if (planData.frames.length === 0) {
+                showPopup('errorPopup', 'errorMessage', 'Please select both a problem file (.pddl) and a plan file (.txt or .plan) to step through the plan.');
+                return;
+            }
+            if (!isPlaying && currentFrame < planData.frames.length - SUBSTEPS) {
+                currentFrame = Math.min(currentFrame + SUBSTEPS, planData.frames.length - 1);
+                document.getElementById('step').value = Math.floor(currentFrame / SUBSTEPS);
+                updateFrame(planData.frames[Math.floor(currentFrame)]);
+            }
+        });
+        document.getElementById('stepBackward').addEventListener('click', () => {
+            if (planData.frames.length === 0) {
+                showPopup('errorPopup', 'errorMessage', 'Please select both a problem file (.pddl) and a plan file (.txt or .plan) to step through the plan.');
+                return;
+            }
+            if (!isPlaying && currentFrame >= SUBSTEPS) {
+                currentFrame -= SUBSTEPS;
+                document.getElementById('step').value = Math.floor(currentFrame / SUBSTEPS);
+                updateFrame(planData.frames[Math.floor(currentFrame)]);
+            }
+        });
+        document.getElementById('reset').addEventListener('click', () => resetScene(true));
+        document.getElementById('speed').addEventListener('input', e => speed = Number(e.target.value));
+        document.getElementById('snowSpeed').addEventListener('input', e => snowSpeed = Number(e.target.value));
+        document.getElementById('step').addEventListener('input', e => {
+            if (planData.frames.length === 0) {
+                showPopup('errorPopup', 'errorMessage', 'Please select both a problem file (.pddl) and a plan file (.txt or .plan) to use the step slider.');
+                return;
+            }
+            currentFrame = Number(e.target.value) * SUBSTEPS;
+            isPlaying = false;
+            document.getElementById('playPause').textContent = 'Play';
+            updateFrame(planData.frames[Math.floor(currentFrame)]);
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = 0.65 * window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth * 0.65, window.innerHeight - 70);
+            controlPanel.style.left = '10px';
+            controlPanel.style.top = '50px';
+        });
+
+        init();
+    </script>
+</body>
+</html>
