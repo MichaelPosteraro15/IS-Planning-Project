@@ -1,6 +1,9 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.widgets import Button
 from .core import *

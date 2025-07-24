@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import os
 import difflib
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
